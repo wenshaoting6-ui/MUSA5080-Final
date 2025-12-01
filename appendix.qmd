@@ -344,3 +344,213 @@ ggplot(df, aes(filings_avg)) +
 
 ```
 
+### Distribution of evictaion rate by week (histogram)
+```{r}
+# Calculate the median / mean to plot
+df$year=year(df$week_date)
+df$yearmonth <- ym(format(df$week_date, "%Y-%m"))
+filings_median <- median(df$filings_avg, na.rm = TRUE)
+
+ggplot(df) +
+  geom_col(aes(x =yearmonth , y = filings_avg), 
+           fill = "darkseagreen3", color = "black") +
+  geom_hline(yintercept = filings_median, linetype = 5) +
+  annotate("text",
+           x = max(df$yearmonth), 
+           y = filings_median, 
+           label = paste("Median:", round(filings_median, 1)),
+           hjust = 1, vjust = -0.5,
+           color = "black", 
+           size = 3) +
+  labs(title = "Weekly Average Eviction Filings",
+       subtitle = "For Philadelphia Residential Properties in 2023-2024",
+       x = "Week",
+       y = "Average Filings") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold")
+  )
+
+
+df$month=month(df$week_date)
+
+
+
+
+df_2020=df%>%
+  filter(year==2020)
+
+df_2020sum1916=df_2020%>%
+  group_by(month)%>%
+  summarise(sum=sum(filings_avg_prepandemic_baseline))
+df_2020sum=df_2020%>%
+  group_by(month)%>%
+  summarise(sum=sum(filings_avg))
+df_2021=df%>%
+  filter(year==2021)
+df_2021sum=df_2021%>%
+  group_by(month)%>%
+  summarise(sum=sum(filings_avg))
+df_2022=df%>%
+  filter(year==2022)
+df_2022sum=df_2022%>%
+  group_by(month)%>%
+  summarise(sum=sum(filings_avg))
+df_2023=df%>%
+  filter(year==2023)
+df_2023sum=df_2023%>%
+  group_by(month)%>%
+  summarise(sum=sum(filings_avg))
+
+df_2024=df%>%
+  filter(year==2024)
+df_2024sum=df_2024%>%
+  group_by(month)%>%
+  summarise(sum=sum(filings_avg))
+
+df_2025=df%>%
+  filter(year==2025)
+df_2025sum=df_2025%>%
+  group_by(month)%>%
+  summarise(sum=sum(filings_avg))
+
+plt1=ggplot(df_2020sum1916) +
+  geom_col(aes(x =month , y = sum), 
+           fill = "darkseagreen3", color = "black") +
+  geom_hline(yintercept = filings_median, linetype = 5) +
+  annotate("text",
+           x = max(df_2020sum1916$month), 
+           y = filings_median, 
+           label = paste("Median:", round(filings_median, 1)),
+           hjust = 1, vjust = -0.5,
+           color = "black", 
+           size = 3) +
+  labs(
+       x = "Week",
+       y = "Average Filings") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold")
+  )
+
+plt2=ggplot(df_2020sum) +
+  geom_col(aes(x =month , y = sum), 
+           fill = "darkseagreen3", color = "black") +
+  geom_hline(yintercept = filings_median, linetype = 5) +
+  annotate("text",
+           x = max(df_2020$month), 
+           y = filings_median, 
+           label = paste("Median:", round(filings_median, 1)),
+           hjust = 1, vjust = -0.5,
+           color = "black", 
+           size = 3) +
+  labs(
+       x = "Week",
+       y = "Average Filings") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold")
+  )
+
+plt3=ggplot(df_2021sum) +
+  geom_col(aes(x =month , y = sum), 
+           fill = "darkseagreen3", color = "black") +
+  geom_hline(yintercept = filings_median, linetype = 5) +
+  annotate("text",
+           x = max(df_2021$month), 
+           y = filings_median, 
+           label = paste("Median:", round(filings_median, 1)),
+           hjust = 1, vjust = -0.5,
+           color = "black", 
+           size = 3) +
+  labs(
+       x = "Week",
+       y = "Average Filings") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold")
+  )
+
+plt4=ggplot(df_2022sum) +
+  geom_col(aes(x =month , y = sum), 
+           fill = "darkseagreen3", color = "black") +
+  geom_hline(yintercept = filings_median, linetype = 5) +
+  annotate("text",
+           x = max(df_2022$month), 
+           y = filings_median, 
+           label = paste("Median:", round(filings_median, 1)),
+           hjust = 1, vjust = -0.5,
+           color = "black", 
+           size = 3) +
+  labs(
+       x = "Week",
+       y = "Average Filings") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold")
+  )
+
+plt5=ggplot(df_2023sum) +
+  geom_col(aes(x =month , y = sum), 
+           fill = "darkseagreen3", color = "black") +
+  geom_hline(yintercept = filings_median, linetype = 5) +
+  annotate("text",
+           x = max(df_2023$month), 
+           y = filings_median, 
+           label = paste("Median:", round(filings_median, 1)),
+           hjust = 1, vjust = -0.5,
+           color = "black", 
+           size = 3) +
+  labs(
+       x = "Week",
+       y = "Average Filings") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold")
+  )
+
+
+plt6=ggplot(df_2024sum) +
+  geom_col(aes(x =month , y = sum), 
+           fill = "darkseagreen3", color = "black") +
+  geom_hline(yintercept = filings_median, linetype = 5) +
+  annotate("text",
+           x = max(df_2023$month), 
+           y = filings_median, 
+           label = paste("Median:", round(filings_median, 1)),
+           hjust = 1, vjust = -0.5,
+           color = "black", 
+           size = 3) +
+  labs(
+       x = "Week",
+       y = "Average Filings") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold")
+  )
+
+
+plt7=ggplot(df_2025sum) +
+  geom_col(aes(x =month , y = sum), 
+           fill = "darkseagreen3", color = "black") +
+  geom_hline(yintercept = filings_median, linetype = 5) +
+  annotate("text",
+           x = max(df_2023$month), 
+           y = filings_median, 
+           label = paste("Median:", round(filings_median, 1)),
+           hjust = 1, vjust = -0.5,
+           color = "black", 
+           size = 3) +
+  labs(
+       x = "Week",
+       y = "Average Filings") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold")
+  )
+
+library(ggpubr)
+ggarrange(plt1, plt2, plt3,plt4,plt5,plt6,plt7, ncol = 4, nrow = 2, align = 'h')
+windows(width = 15, height =5 )
+plt1+plt2+plt3+plt4+plt5
+```
