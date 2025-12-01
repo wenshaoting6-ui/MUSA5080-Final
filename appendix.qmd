@@ -19,3 +19,7 @@ df$days_since_first=as.numeric(df$week_date-df$first_of_month)
 df$week_of_month <- ceiling((df$days_since_first + 1) / 7)
 ```
 
+```{r}
+
+```
+
