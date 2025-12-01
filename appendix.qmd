@@ -9,6 +9,8 @@ format:
 ---
 
 ```{r}
+library(tidycensus)
+library(tidyverse)
 library(here)
 library(lubridate)
 library(dplyr)
@@ -24,6 +26,196 @@ df$days_since_first=as.numeric(df$week_date-df$first_of_month)
 df$week_of_month <- ceiling((df$days_since_first + 1) / 7)
 summary(df)
 
+```
+
+```{r}
+acs_tables <- load_variables(year = 2023, dataset = "acs5", cache = TRUE)
+
+View(acs_tables)
+```
+
+```{r}
+census_path <- here("data", "Philly Census")
+
+census_shp_path <- file.path(census_path, "philly_tract.shp")
+
+philly_tract_sf <- st_read(census_shp_path, quiet = TRUE)
+```
+
+
+Variables Collected:
+
+Median gross rent: (B25064)
+
+Race: (B02001)
+
+Median household income: (B19013)
+
+% of Renter: (B25003)
+
+Year Built(renter): (B25036)
+
+Number of Room: (B25017)
+
+Room Per Household: (B25020)
+
+Family Structure: (B11001)
+
+Unemployment in labor force: (C18120)
+
+### census data collected
+
+```{r api key, eval=FALSE, include=FALSE}
+
+census_api_key <- ("138db656646183a18ae51e4a7c1e1f5cd64d4b40")
+
+# Define parameters
+my_state  <- "Pennsylvania"
+my_county <- "Philadelphia"
+acs_year  <- 2023
+
+# Median Gross Rent
+median_rent <- get_acs(
+  geography = "tract",
+  state = my_state,
+  county = my_county,
+  variables = "B25064_001",
+  year = acs_year,
+  survey = "acs5"
+) %>%
+  select(GEOID, median_rent = estimate)
+
+# Race
+race <- get_acs(
+  geography = "tract",
+  state = my_state,
+  county = my_county,
+  table = "B02001",
+  year = acs_year,
+  survey = "acs5"
+) %>%
+  select(GEOID, variable, estimate) %>%
+  tidyr::pivot_wider(names_from = variable, values_from = estimate) %>%
+  mutate(
+    total_pop = B02001_001,
+    white = B02001_002,
+    black = B02001_003,
+    asian = B02001_005,
+    pct_white = 100 * white / total_pop,
+    pct_black = 100 * black / total_pop,
+    pct_asian = 100 * asian / total_pop
+  ) %>%
+  select(GEOID, total_pop, pct_white, pct_black, pct_asian)
+
+# Median Household Income
+median_income <- get_acs(
+  geography = "tract",
+  state = my_state,
+  county = my_county,
+  variables = "B19013_001",
+  year = acs_year,
+  survey = "acs5"
+) %>%
+  select(GEOID, median_hh_income = estimate)
+
+# Percent Renter
+tenure <- get_acs(
+  geography = "tract",
+  state = my_state,
+  county = my_county,
+  table = "B25003",
+  year = acs_year,
+  survey = "acs5"
+) %>%
+  select(GEOID, variable, estimate) %>%
+  tidyr::pivot_wider(names_from = variable, values_from = estimate) %>%
+  mutate(
+    total_occupied = B25003_001,
+    renter_occupied = B25003_003,
+    pct_renter = 100 * renter_occupied / total_occupied
+  ) %>%
+  select(GEOID, pct_renter)
+
+# Median Year Built - Renter Occupied
+year_built_renter <- get_acs(
+  geography = "tract",
+  state = my_state,
+  county = my_county,
+  variables = "B25037_003",
+  year = acs_year,
+  survey = "acs5"
+) %>%
+  select(GEOID, median_year_built_renter = estimate)
+
+# Number of Rooms
+num_rooms <- get_acs(
+  geography = "tract",
+  state = my_state,
+  county = my_county,
+  variables = "B25017_001",
+  year = acs_year,
+  survey = "acs5"
+) %>%
+  select(GEOID, aggregate_rooms = estimate)
+
+# Median Rooms Per Household 
+rooms_per_hh <- get_acs(
+  geography = "tract",
+  state = my_state,
+  county = my_county,
+  variables = "B25018_001",
+  year = acs_year,
+  survey = "acs5"
+) %>%
+  select(GEOID, median_rooms = estimate)
+
+# Family Structure 
+family_structure <- get_acs(
+  geography = "tract",
+  state = my_state,
+  county = my_county,
+  table = "B11001",
+  year = acs_year,
+  survey = "acs5"
+) %>%
+  select(GEOID, variable, estimate) %>%
+  tidyr::pivot_wider(names_from = variable, values_from = estimate) %>%
+  mutate(
+    total_hh = B11001_001,
+    family_hh = B11001_002,
+    nonfamily_hh = B11001_007,
+    pct_family = 100 * family_hh / total_hh
+  ) %>%
+  select(GEOID, total_hh, pct_family)
+
+# Unemployment in Labor Force (C18120)
+unemployment <- get_acs(
+  geography = "tract",
+  state = my_state,
+  county = my_county,
+  table = "C18120",
+  year = acs_year,
+  survey = "acs5"
+) %>%
+  select(GEOID, variable, estimate) %>%
+  tidyr::pivot_wider(names_from = variable, values_from = estimate) %>%
+  mutate(
+    in_labor_force = C18120_002,
+    unemployed = C18120_004,
+    pct_unemployed = 100 * unemployed / in_labor_force
+  ) %>%
+  select(GEOID, pct_unemployed)
+
+#Join All data
+philly_tract_data <- median_rent %>%
+  left_join(race, by = "GEOID") %>%
+  left_join(median_income, by = "GEOID") %>%
+  left_join(tenure, by = "GEOID") %>%
+  left_join(year_built_renter, by = "GEOID") %>%
+  left_join(num_rooms, by = "GEOID") %>%
+  left_join(rooms_per_hh, by = "GEOID") %>%
+  left_join(family_structure, by = "GEOID") %>%
+  left_join(unemployment, by = "GEOID")
 ```
 
 
@@ -73,7 +265,6 @@ poi_path <- here("data", "filtered poi")
 poi_shp_path=file.path(poi_path, "philadelphia_poi_filtered.shp")
 poi=st_read(poi_shp_path)
 ```
-
 
 
 ```{r}
