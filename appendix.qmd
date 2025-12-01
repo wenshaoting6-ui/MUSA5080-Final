@@ -12,14 +12,122 @@ format:
 library(here)
 library(lubridate)
 library(dplyr)
+library(sf)
+library(tigris)
+library(spatstat)
+library(terra)
+library(ggplot2)
 df=read.csv(here("data/philadelphia_weekly_2020_2021 (1).csv"))
 df$week_date <- ymd(df$week_date)
 df$first_of_month=floor_date(df$week_date,"month")
 df$days_since_first=as.numeric(df$week_date-df$first_of_month)
 df$week_of_month <- ceiling((df$days_since_first + 1) / 7)
+summary(df)
+
 ```
 
+
+### Commercial and office points of interests (Amenities)(alternative in the next section if you do not want to download pbf data)
+
+```{r, eval=FALSE}
+# downloading osm data from geofabrik:https://download.geofabrik.de/north-america/us-northeast.html
+
+#input_pbf <- "the pdf file downloaded from the link above"
+
+
+# get boundary of Philadelphia County
+pa_counties <- counties(state = "PA", year = 2023)
+
+# Filter to Philadelphia County
+philly_boundary <- subset(pa_counties, NAME == "Philadelphia")
+
+# read the full OSM PBF (you can select layer types like points, lines, polygons)
+poi <- oe_read(input_pbf, 
+                       boundary = philly_boundary, 
+                       boundary_type = "clipsrc", 
+                       layer = "points")  # or "lines" / "multipolygons"
+
+
+keywords <- c("shop","amenity","office","historic","tourism","healthcare",
+              "building","leisure")
+pattern <- paste0(keywords, collapse = "|")
+
+# ==== Filter by 'other_tags' ====
+if ("other_tags" %in% names(poi)) {
+  poi$other_tags <- iconv(as.character(poi$other_tags), from = "", to = "UTF-8", sub = "")
+  poi$other_tags[is.na(poi$other_tags)] <- ""
+  
+  poi_filtered <- poi %>%
+    filter(grepl(pattern, other_tags, ignore.case = TRUE))
+  
+  cat("filtered POIs found:", nrow(poi_filtered), "of", nrow(poi), "\n")
+  
+} 
+
+```
+
+### Alternative: filtered POI if you donot want to download osm data
 ```{r}
+
+poi_path <- here("data", "filtered poi")
+poi_shp_path=file.path(poi_path, "philadelphia_poi_filtered.shp")
+poi=st_read(poi_shp_path)
+```
+
+
+
+```{r}
+# get boundary of Philadelphia County
+pa_counties <- counties(state = "PA", year = 2023)
+
+# Filter to Philadelphia County
+philly_boundary <- subset(pa_counties, NAME == "Philadelphia")
+
+philly_boundary <- st_transform(philly_boundary, 3364)  
+poi <- st_transform(poi, 3364)
+# ==== Prepare point pattern ====
+# Convert sf points to spatstat ppp object
+win <- as.owin(st_union(philly_boundary))  # window from county boundary
+coords <- st_coordinates(poi)
+pp <- ppp(x = coords[,1], y = coords[,2], window = win)
+
+# ==== Run Kernel Density Estimation ====
+# Sigma = bandwidth in map units (here, meters)
+density_map <- density.ppp(pp, sigma = 300* 3.28084, edge = TRUE, at = "pixels",eps = c(100, 100))
+
+# ==== Convert to raster ====
+r_Economic <- rast(density_map)
+crs(r_Economic) <- st_crs(philly_boundary)$proj4string
+r_Economic <- mask(r_Economic, vect(philly_boundary))
+
+```
+
+# PHASE 2: EXPLORATORY DATA ANALYSIS
+
+### Distribution of evictaion rate (histogram)
+```{r}
+# Calculate the median / mean to plot
+filings_median <- median(df$filings_avg, na.rm = TRUE)
+
+ggplot(df, aes(filings_avg)) +
+  geom_histogram(bins = 60, fill = "darkseagreen3", color = "black") +
+  geom_vline(xintercept = filings_median, linetype = 5) +
+  annotate("text",
+           x = filings_median, 
+           y = 6300, 
+           label = "Median",
+           hjust = -0.2, 
+           color = "black", 
+           size = 3) +
+  scale_x_continuous() +
+  labs(title = "Distribution of Weekly Eviction Rate",
+       subtitle = "For Philadelphia Residential Properties in 2023-2024",
+       x = "Eviction Rate",
+       y = "Count") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold")
+  )
 
 ```
 
