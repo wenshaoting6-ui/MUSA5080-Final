@@ -1,0 +1,10 @@
+---
+title: "Technical Appendix"
+format: 
+  html:
+    toc: true
+    toc-location: left
+    code-fold: show
+    theme: cosmo
+---
+
