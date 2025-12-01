@@ -63,6 +63,8 @@ Family Structure: (B11001)
 
 Unemployment in labor force: (C18120)
 
+Gross Rent as a Percentage of Household Income: (B25070)
+
 ### census data collected
 
 ```{r api key, eval=FALSE, include=FALSE}
@@ -206,6 +208,25 @@ unemployment <- get_acs(
   ) %>%
   select(GEOID, pct_unemployed)
 
+# Gross Rent as Percentage of Household Income ()
+rent_burden <- get_acs(
+  geography = "tract",
+  state = my_state,
+  county = my_county,
+  table = "B25070",
+  year = acs_year,
+  survey = "acs5"
+) %>%
+  select(GEOID, variable, estimate) %>%
+  tidyr::pivot_wider(names_from = variable, values_from = estimate) %>%
+  mutate(
+    total = B25070_001,
+    # Rent burdened = paying 30%+ of income on rent
+    rent_burdened = B25070_007 + B25070_008 + B25070_009 + B25070_010,
+    pct_rent_burdened = 100 * rent_burdened / total
+  ) %>%
+  select(GEOID, pct_rent_burdened)
+
 #Join All data
 philly_tract_data <- median_rent %>%
   left_join(race, by = "GEOID") %>%
@@ -215,7 +236,8 @@ philly_tract_data <- median_rent %>%
   left_join(num_rooms, by = "GEOID") %>%
   left_join(rooms_per_hh, by = "GEOID") %>%
   left_join(family_structure, by = "GEOID") %>%
-  left_join(unemployment, by = "GEOID")
+  left_join(unemployment, by = "GEOID") %>%
+  left_join(rent_burden, by = "GEOID")
 ```
 
 
