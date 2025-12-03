@@ -19,14 +19,18 @@ library(tigris)
 library(spatstat)
 library(terra)
 library(ggplot2)
+
+
+```
+```{r}
 df=read.csv(here("data/philadelphia_weekly_2020_2021 (1).csv"))
 df$week_date <- ymd(df$week_date)
 df$first_of_month=floor_date(df$week_date,"month")
 df$days_since_first=as.numeric(df$week_date-df$first_of_month)
 df$week_of_month <- ceiling((df$days_since_first + 1) / 7)
 summary(df)
-
 ```
+
 
 ```{r}
 acs_tables <- load_variables(year = 2023, dataset = "acs5", cache = TRUE)
@@ -331,10 +335,12 @@ wage_data <- file_list %>%
 ### merge wage data with evictation data
 ```{r}
 df$quarter=quarter(df$week_date)
+df$year=year(df$week_date)
 df$yearqu=paste0(df$year, df$quarter)
 wage_data$yearqu=paste0(wage_data$year,wage_data$qtr)
-df=df%>%
-  left_join(wage_data,by="yearqu")
+df=wage_data%>%
+  select(yearqu,avg_wkly_wage)%>%
+  right_join(df,by="yearqu")
   
 ```
 
@@ -344,15 +350,25 @@ food=read.csv(here('data/food.csv'))
 electricity=read.csv(here('data/electricity.csv'))
 commodities=read.csv(here('data/commodities.csv'))
 
-food$first_of_month=ymd(food$Label)
+
+df$month=month(df$week_date)
 electricity$month=as.numeric(gsub("M","",electricity$Period))
-df$yearm=paste0(df$year.x,df$month)
+df$yearm=paste0(df$year,df$month)
 electricity$yearm=paste0(electricity$Year,electricity$month)
-df=df%>%
-  left_join(electricity,by="yearm")
-df$electricitycpi=df$Value
 
+df=electricity%>%
+  mutate(electricitycpi=Value)%>%
+  select(yearm,electricitycpi)%>%
+  right_join(df,by="yearm")
 
+food$first_of_month=ym(food$Label)
+df=food%>%
+  mutate(foodcpi=Value)%>%
+  select(first_of_month,foodcpi)%>%
+  right_join(df, by="first_of_month")
+
+df.test=df%>%
+  arrange(week_date)
 ```
 
 
