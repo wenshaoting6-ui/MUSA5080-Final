@@ -315,6 +315,48 @@ r_Economic <- mask(r_Economic, vect(philly_boundary))
 
 ```
 
+### load quartly wage data
+```{r}
+file_list <- list.files(
+  path = "data",
+  pattern = ".q1-q4 42101 Philadelphia County, Pennsylvania.csv",
+  full.names = TRUE
+)
+wage_data <- file_list %>%
+  set_names() %>% 
+  map_df(~ read_csv(.x), .id = "source_file")%>%
+  filter(own_title=="Total Covered")%>%
+  select(year,qtr,avg_wkly_wage)
+```
+### merge wage data with evictation data
+```{r}
+df$quarter=quarter(df$week_date)
+df$yearqu=paste0(df$year, df$quarter)
+wage_data$yearqu=paste0(wage_data$year,wage_data$qtr)
+df=df%>%
+  left_join(wage_data,by="yearqu")
+  
+```
+
+### merge with different CPI and unemployment rate per month in Philadelphia
+```{r}
+food=read.csv(here('data/food.csv'))
+electricity=read.csv(here('data/electricity.csv'))
+commodities=read.csv(here('data/commodities.csv'))
+
+food$first_of_month=ymd(food$Label)
+electricity$month=as.numeric(gsub("M","",electricity$Period))
+df$yearm=paste0(df$year.x,df$month)
+electricity$yearm=paste0(electricity$Year,electricity$month)
+df=df%>%
+  left_join(electricity,by="yearm")
+df$electricitycpi=df$Value
+
+
+```
+
+
+
 # PHASE 2: EXPLORATORY DATA ANALYSIS
 
 ### Distribution of evictaion rate (histogram)
@@ -607,8 +649,7 @@ plt7=ggplot(df_2025Q) +
 
 library(ggpubr)
 ggarrange(plt1, plt2, plt3,plt4,plt5,plt6,plt7, ncol = 4, nrow = 2, align = 'h')
-windows(width = 15, height =5 )
-plt1+plt2+plt3+plt4+plt5
+
 ```
 
 
