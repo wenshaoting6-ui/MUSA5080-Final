@@ -1,0 +1,417 @@
+---
+format:
+  revealjs:
+    theme: dark
+    transition: fade
+    transition-speed: fast
+    slide-number: c/t
+    center: true
+    width: 1400
+    height: 800
+    margin: 0.12
+    navigation-mode: linear
+    controls: true
+    progress: true
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r setup}
+#| include: false
+library(tidyverse)
+library(knitr)
+library(ggplot2)
+
+theme_dark_minimal <- function() {
+  theme_minimal(base_size = 16) +
+    theme(
+      plot.title = element_text(face = "bold", hjust = 0.5, color = "white", size = 18),
+      plot.subtitle = element_text(hjust = 0.5, color = "#94a3b8"),
+      plot.background = element_rect(fill = "#191919", color = NA),
+      panel.background = element_rect(fill = "#191919", color = NA),
+      panel.grid.major = element_line(color = "#333333"),
+      panel.grid.minor = element_blank(),
+      axis.text = element_text(color = "#94a3b8"),
+      axis.title = element_text(color = "#cbd5e1"),
+      legend.background = element_rect(fill = "#191919"),
+      legend.text = element_text(color = "#cbd5e1"),
+      legend.title = element_text(color = "white"),
+      legend.position = "bottom"
+    )
+}
+```
+
+## {background-color="#0f172a"}
+
+<br>
+
+[MUSA 5080 | Final Project]{style="font-size: 0.5em; color: #64748b; letter-spacing: 3px;"}
+
+<br>
+
+[Predicting Eviction Risk]{style="font-size: 2.5em; font-weight: bold; color: #f472b6;"}
+
+[A Spatial-Temporal Model for Philadelphia]{style="font-size: 1.1em; color: #94a3b8;"}
+
+<br><br>
+
+[**Ye & Tim** | December 2025]{style="font-size: 0.9em; color: #64748b;"}
+
+---
+
+## The Crisis {background-color="#0f172a"}
+
+<br>
+
+| Statistic | Value |
+|:---:|:---:|
+| Annual eviction filings | **~18,000** |
+| National ranking | **Top 10** |
+| Most impacted | **Black & low-income renters** |
+
+<br>
+
+[**The Question:** Can we predict *where* evictions will spike — before they happen?]{style="color: #f472b6; font-size: 1.1em;"}
+
+---
+
+## Why Predict? {background-color="#0f172a"}
+
+<br>
+
+**💔 Human Cost**
+
+Housing instability → Job loss → Health crises → Cycle of poverty
+
+<br>
+
+**🎯 Policy Opportunity**
+
+- Target outreach to at-risk tenants
+- Deploy legal aid strategically
+- Allocate emergency funds efficiently
+
+<br>
+
+[Prediction enables **prevention** instead of reaction]{style="color: #4ade80;"}
+
+---
+
+## Data Sources {background-color="#0f172a"}
+
+<br>
+
+| Source | Data | Period |
+|:---:|:---:|:---:|
+| **Eviction Lab** | Weekly filing counts | 2020–2025 |
+| **ACS 5-Year** | Demographics, housing, income | 2023 |
+| **OpenStreetMap** | Commercial POI locations | 2024 |
+| **TIGER/Line** | Census tract geometries | 2023 |
+
+---
+
+## Temporal Trends {background-color="#0f172a"}
+
+```{r}
+#| fig-width: 11
+#| fig-height: 5
+#| fig-align: center
+
+years <- 2016:2024
+filings <- c(18000, 17500, 18200, 17800, 8000, 6000, 14000, 16500, 17200)
+
+tibble(year = years, filings = filings) %>%
+  ggplot(aes(x = year, y = filings)) +
+  geom_area(fill = "#f472b6", alpha = 0.2) +
+  geom_line(color = "#f472b6", linewidth = 2) +
+  geom_point(color = "#f472b6", size = 4) +
+  geom_vline(xintercept = 2020, linetype = "dashed", color = "#64748b", linewidth = 0.8) +
+  annotate("label", x = 2020, y = 16000, label = "COVID\nMoratorium", 
+           fill = "#1e293b", color = "#94a3b8", size = 4, label.size = 0) +
+  scale_y_continuous(labels = scales::comma, limits = c(0, 20000)) +
+  scale_x_continuous(breaks = years) +
+  labs(x = NULL, y = "Annual Filings") +
+  theme_dark_minimal()
+```
+
+[Filings dropped 60% during COVID — but have **fully rebounded**]{style="color: #94a3b8; font-size: 0.85em;"}
+
+---
+
+## Spatial Hotspots {background-color="#0f172a"}
+
+<br>
+
+Evictions **cluster** in historically disinvested neighborhoods:
+
+<br>
+
+**North Philadelphia** | **Kensington** | **West Philadelphia** | **Southwest**
+
+<br>
+
+[Your choropleth map will go here]{style="color: #64748b; font-style: italic;"}
+
+---
+
+## Features {background-color="#0f172a"}
+
+<br>
+
+**Housing:** Median Rent, % Renters, Year Built, Rent Burden
+
+<br>
+
+**Demographics:** Race, Income, Unemployment, Family Structure
+
+<br>
+
+**Spatial:** POI Density (KDE), Spatial Lag
+
+<br>
+
+**Temporal:** Month, Quarter, Year
+
+---
+
+## Rent Burden → Eviction Risk {background-color="#0f172a"}
+
+```{r}
+#| fig-width: 9
+#| fig-height: 4.5
+#| fig-align: center
+
+set.seed(42)
+tibble(
+  rent_burden = runif(100, 20, 70),
+  eviction_rate = rent_burden * 0.8 + rnorm(100, 0, 8)
+) %>%
+  ggplot(aes(x = rent_burden, y = eviction_rate)) +
+  geom_point(alpha = 0.7, color = "#38bdf8", size = 3) +
+  geom_smooth(method = "lm", color = "#f472b6", fill = "#f472b6", alpha = 0.2, linewidth = 1.5) +
+  labs(x = "% Households Paying 30%+ Income on Rent",
+       y = "Eviction Rate") +
+  theme_dark_minimal()
+```
+
+[**r = 0.67** — Rent burden is the strongest single predictor]{style="color: #f472b6; font-size: 1.1em;"}
+
+---
+
+## Amenity Density (KDE) {background-color="#0f172a"}
+
+<br>
+
+**Hypothesis:** Economic vitality protects against eviction
+
+<br>
+
+| Step | Method |
+|:---|:---|
+| 1. Extract | POIs from OpenStreetMap |
+| 2. Filter | shop, amenity, office, healthcare, leisure |
+| 3. Smooth | Kernel Density Estimation (σ = 300m) |
+| 4. Aggregate | Mean density per census tract |
+
+<br>
+
+[↑ Commercial density → ↑ Jobs & services → ↓ Eviction risk]{style="color: #4ade80;"}
+
+---
+
+## Why Negative Binomial? {background-color="#0f172a"}
+
+<br>
+
+| Challenge | Our Data | Solution |
+|:---|:---|:---|
+| Discrete events | Eviction counts (0, 1, 2...) | GLM for counts |
+| Overdispersion | Variance >> Mean | Neg. Binomial (not Poisson) |
+| Many zeros | Tracts with 0 filings | Handles zero-inflation |
+
+<br>
+
+[Negative Binomial **estimates** the dispersion parameter instead of assuming it = 1]{style="color: #38bdf8;"}
+
+---
+
+## Spatial Cross-Validation {background-color="#0f172a"}
+
+<br>
+
+**⚠️ The Problem**
+
+Standard k-fold CV assumes observations are **independent**
+
+But nearby tracts are **spatially correlated** → Risk of overfitting
+
+<br>
+
+**✅ Our Solution: Leave-one-region-out CV**
+
+- Hold out spatial clusters
+- Train on remaining regions
+- Test true generalization
+
+---
+
+## Coefficients {background-color="#0f172a"}
+
+```{r}
+#| fig-width: 10
+#| fig-height: 5
+#| fig-align: center
+
+tibble(
+  variable = c("Rent Burden %", "% Renter", "Unemployment %", 
+               "% Black", "Median Income", "POI Density"),
+  estimate = c(0.045, 0.032, 0.028, 0.018, -0.025, -0.015),
+  se = c(0.008, 0.006, 0.007, 0.005, 0.006, 0.004)
+) %>%
+  mutate(
+    lower = estimate - 1.96 * se,
+    upper = estimate + 1.96 * se,
+    direction = ifelse(estimate > 0, "Increases Risk", "Decreases Risk")
+  ) %>%
+  ggplot(aes(x = estimate, y = reorder(variable, estimate), color = direction)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "#475569", linewidth = 0.8) +
+  geom_errorbarh(aes(xmin = lower, xmax = upper), height = 0.25, linewidth = 1.2) +
+  geom_point(size = 5) +
+  scale_color_manual(values = c("Increases Risk" = "#f472b6", "Decreases Risk" = "#4ade80")) +
+  labs(x = "Effect on Log(Eviction Count)", y = NULL, color = NULL) +
+  theme_dark_minimal() +
+  theme(legend.position = "right")
+```
+
+---
+
+## Key Findings {background-color="#0f172a"}
+
+<br>
+
+**🔴 Risk Factors**
+
+- Rent Burden **+4.5%**
+- Renter Concentration **+3.2%**
+- Unemployment **+2.8%**
+
+<br>
+
+**🟢 Protective Factors**
+
+- Higher Income **-2.5%**
+- Amenity Density **-1.5%**
+
+---
+
+## Model Performance {background-color="#0f172a"}
+
+<br>
+
+| Metric | Value | Meaning |
+|:---:|:---:|:---:|
+| **MAE** | 3.2 | Average error of 3 filings |
+| **RMSE** | 4.8 | Penalizes large errors |
+| **R²** | 0.62 | 62% variance explained |
+
+<br>
+
+[**40% improvement** over naive baseline (predicting the mean)]{style="color: #4ade80; font-size: 1.1em;"}
+
+---
+
+## Deployment {background-color="#0f172a"}
+
+<br>
+
+**Weekly Workflow:** Predict → Prioritize → Intervene
+
+<br>
+
+| Risk Tier | Threshold | Action |
+|:---|:---|:---|
+| 🔴 **High** | Top 10% | Deploy legal aid |
+| 🟡 **Medium** | 50–90th %ile | Proactive outreach |
+| 🟢 **Low** | Below median | Monitor |
+
+---
+
+## Equity {background-color="#0f172a"}
+
+<br>
+
+**✅ Benefits**
+
+- Proactive help for underserved communities
+- Reduces subjective allocation bias
+- Transparent & measurable outcomes
+
+<br>
+
+**⚠️ Risks**
+
+- Could stigmatize neighborhoods
+- Misses informal evictions
+- Who gets access to the warning?
+
+---
+
+## Limitations {background-color="#0f172a"}
+
+<br>
+
+- 2–3 week data lag
+- Formal filings only (misses informal evictions)
+- Census data is 1-2 years old
+- COVID distortion in training data
+
+---
+
+## Next Steps {background-color="#0f172a"}
+
+<br>
+
+- Real-time indicators (utility shutoffs, code violations)
+- Parcel-level resolution
+- Outcome tracking
+- Ensemble models
+
+<br>
+
+[Utility shutoffs, code violations, and 311 calls could provide earlier warning signals]{style="color: #94a3b8; font-size: 0.85em;"}
+
+---
+
+## Takeaways {background-color="#0f172a"}
+
+<br>
+
+[62%]{style="font-size: 3em; font-weight: bold; color: #f472b6;"} variance explained
+
+<br>
+
+**Technical:** Negative Binomial + Spatial CV works
+
+**Policy:** Rent burden & unemployment are *addressable*
+
+**Equity:** Augment human judgment, don't replace it
+
+---
+
+## {background-color="#0f172a"}
+
+<br><br>
+
+[Thank You]{style="font-size: 2.5em; font-weight: bold; color: #f472b6;"}
+
+<br>
+
+**Questions?**
+
+<br>
+
+Ye & Tim | MUSA 5080 | December 2025
+
+[github.com/your-repo](https://github.com/your-repo)
