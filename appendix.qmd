@@ -35,7 +35,6 @@ summary(df)
 ```{r}
 acs_tables <- load_variables(year = 2023, dataset = "acs5", cache = TRUE)
 
-View(acs_tables)
 ```
 
 ```{r}
@@ -71,7 +70,7 @@ Gross Rent as a Percentage of Household Income: (B25070)
 
 ### census data collected
 
-```{r api key, eval=FALSE, include=FALSE}
+```{r api key, eval=TRUE, include=FALSE}
 
 census_api_key <- ("138db656646183a18ae51e4a7c1e1f5cd64d4b40")
 
@@ -848,4 +847,84 @@ ggarrange(plt1, plt2, plt3,plt4,plt5,plt6,plt7, ncol = 4, nrow = 2, align = 'h')
 windows(width = 15, height =5 )
 plt1+plt2+plt3+plt4+plt5
 ```
+
+### spatial join
+```{r}
+
+# join census variables to tract shapefile
+philly_tracts <- philly_tract_sf %>%
+  left_join(philly_tract_data, by = "GEOID")
+
+# KDE POI density to census tracts
+philly_tracts_projected <- st_transform(philly_tracts, 3364)
+
+philly_tracts_projected$poi_density <- terra::extract(
+  r_Economic, 
+  vect(philly_tracts_projected), 
+  fun = mean, 
+  na.rm = TRUE
+)[, 2]
+
+philly_tracts_final <- st_transform(philly_tracts_projected, 4326)
+
+```
+
+```{r}
+# aggregate eviction data by tract and QUARTER
+df_evictions <- df %>%
+  group_by(GEOID, year, quarter) %>%
+  summarise(
+    eviction_count = sum(filings_avg, na.rm = TRUE),
+    eviction_baseline = sum(filings_avg_prepandemic_baseline, na.rm = TRUE),
+    avg_wkly_wage = first(avg_wkly_wage),
+    foodcpi = first(foodcpi),
+    electricitycpi = first(electricitycpi),
+    .groups = "drop"
+  )
+
+# join everything into final modeling dataset
+model_data <- philly_tracts_final %>%
+  left_join(df_evictions, by = "GEOID") %>%
+  filter(!is.na(eviction_count))
+
+# check result
+glimpse(model_data)
+```
+
+
+```{r}
+# aggregate eviction data by tract and MONTH
+df_evictions_monthly <- df %>%
+  group_by(GEOID, year, month) %>%
+  summarise(
+    eviction_count = sum(filings_avg, na.rm = TRUE),
+    eviction_baseline = sum(filings_avg_prepandemic_baseline, na.rm = TRUE),
+    foodcpi = first(foodcpi),           # monthly - OK
+    electricitycpi = first(electricitycpi),  # monthly - OK
+    .groups = "drop"
+  ) %>%
+  mutate(quarter = ceiling(month / 3))  # add quarter for wage join
+
+# join wage separately (since it's quarterly)
+df_evictions_monthly <- df_evictions_monthly %>%
+  left_join(
+    wage_data %>% select(year, qtr, avg_wkly_wage) %>% rename(quarter = qtr),
+    by = c("year", "quarter")
+  )
+
+model_data_monthly <- philly_tracts_final %>%
+  left_join(df_evictions_monthly, by = "GEOID") %>%
+  filter(!is.na(eviction_count))
+
+# check result
+glimpse(model_data_monthly)
+```
+
+
+```{r}
+colSums(is.na(model_data_monthly))
+```
+
+
+
 
