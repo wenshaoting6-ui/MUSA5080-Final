@@ -19,14 +19,18 @@ library(tigris)
 library(spatstat)
 library(terra)
 library(ggplot2)
+
+
+```
+```{r}
 df=read.csv(here("data/philadelphia_weekly_2020_2021 (1).csv"))
 df$week_date <- ymd(df$week_date)
 df$first_of_month=floor_date(df$week_date,"month")
 df$days_since_first=as.numeric(df$week_date-df$first_of_month)
 df$week_of_month <- ceiling((df$days_since_first + 1) / 7)
 summary(df)
-
 ```
+
 
 ```{r}
 acs_tables <- load_variables(year = 2023, dataset = "acs5", cache = TRUE)
@@ -314,6 +318,60 @@ crs(r_Economic) <- st_crs(philly_boundary)$proj4string
 r_Economic <- mask(r_Economic, vect(philly_boundary))
 
 ```
+
+### load quartly wage data
+```{r}
+file_list <- list.files(
+  path = "data",
+  pattern = ".q1-q4 42101 Philadelphia County, Pennsylvania.csv",
+  full.names = TRUE
+)
+wage_data <- file_list %>%
+  set_names() %>% 
+  map_df(~ read_csv(.x), .id = "source_file")%>%
+  filter(own_title=="Total Covered")%>%
+  select(year,qtr,avg_wkly_wage)
+```
+### merge wage data with evictation data
+```{r}
+df$quarter=quarter(df$week_date)
+df$year=year(df$week_date)
+df$yearqu=paste0(df$year, df$quarter)
+wage_data$yearqu=paste0(wage_data$year,wage_data$qtr)
+df=wage_data%>%
+  select(yearqu,avg_wkly_wage)%>%
+  right_join(df,by="yearqu")
+  
+```
+
+### merge with different CPI and unemployment rate per month in Philadelphia
+```{r}
+food=read.csv(here('data/food.csv'))
+electricity=read.csv(here('data/electricity.csv'))
+commodities=read.csv(here('data/commodities.csv'))
+
+
+df$month=month(df$week_date)
+electricity$month=as.numeric(gsub("M","",electricity$Period))
+df$yearm=paste0(df$year,df$month)
+electricity$yearm=paste0(electricity$Year,electricity$month)
+
+df=electricity%>%
+  mutate(electricitycpi=Value)%>%
+  select(yearm,electricitycpi)%>%
+  right_join(df,by="yearm")
+
+food$first_of_month=ym(food$Label)
+df=food%>%
+  mutate(foodcpi=Value)%>%
+  select(first_of_month,foodcpi)%>%
+  right_join(df, by="first_of_month")
+
+df.test=df%>%
+  arrange(week_date)
+```
+
+
 
 # PHASE 2: EXPLORATORY DATA ANALYSIS
 
@@ -607,8 +665,7 @@ plt7=ggplot(df_2025Q) +
 
 library(ggpubr)
 ggarrange(plt1, plt2, plt3,plt4,plt5,plt6,plt7, ncol = 4, nrow = 2, align = 'h')
-windows(width = 15, height =5 )
-plt1+plt2+plt3+plt4+plt5
+
 ```
 
 
