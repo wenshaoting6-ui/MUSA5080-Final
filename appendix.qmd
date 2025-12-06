@@ -23,6 +23,7 @@ library(arrow)
 library(tigris)
 library(car)
 library(lmtest)
+library(spdep)
 ```
 ```{r}
 df=read.csv(here("data/philadelphia_monthly_2020_2021.csv"))
@@ -34,7 +35,6 @@ summary(df)
 
 ```{r}
 acs_tables <- load_variables(year = 2023, dataset = "acs5", cache = TRUE)
-
 ```
 
 ```{r}
@@ -315,6 +315,7 @@ wage_data <- file_list %>%
   filter(own_title=="Total Covered")%>%
   select(year,qtr,avg_wkly_wage)
 ```
+
 ### merge wage data with evictation data
 ```{r}
 df$quarter=quarter(df$week_date)
@@ -384,8 +385,6 @@ df=unemployment%>%
   mutate(unemployment_rate=Value)%>%
   select(unemployment_rate,week_date)%>%
   right_join(df,by="week_date")
-
-
 ```
 
 
@@ -397,7 +396,6 @@ df_census=df%>%
 
 df_census_sf=df_census%>%
   left_join(philly_tract_sf,by="GEOID")
-
 ```
 
 
@@ -423,23 +421,446 @@ df_final=df_census_sf%>%
   filter(year(week_date) %in% c(2020:2023))%>%
   left_join(rent_by_month_tract,by=c("date","GEOID"))%>%
   select(GEOID,unemployment_rate,foodcpi,electricitycpi,avg_wkly_wage,
-         filings_avg,comcpi,total_pop,pct_white,pct_black,pct_asian,
+         filings_2020,comcpi,total_pop,pct_white,pct_black,pct_asian,
          median_hh_income,pct_renter,median_year_built_renter,aggregate_rooms,
          median_rooms,total_hh,pct_family,median_rent.y)
 ```
 
 
+#EXPLORATORY DATA ANALYSIS
+
+```{r}
+colnames(df_final)
+```
 
 
+# Monthly Eviction Filings by Year
+```{r}
+# Aggregate by year and month
+monthly_by_year <- df %>%
+  group_by(year, month) %>%
+  summarise(total_filings = sum(filings_2020, na.rm = TRUE), .groups = "drop") %>%
+  filter(year %in% c(2020, 2021, 2022, 2023))
+
+# Check the data
+print(monthly_by_year, n = 48)
+
+# Function to create plot for each year
+make_year_plot <- function(data, year_num) {
+  year_data <- data %>% filter(year == year_num)
+  
+  ggplot(year_data) +
+    geom_col(aes(x = factor(month), y = total_filings), 
+             fill = "darkseagreen3", color = "black", width = 0.7) +
+    scale_x_discrete(labels = month.abb) +
+    labs(title = as.character(year_num),
+         x = NULL,
+         y = NULL) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(face = "bold", hjust = 0.5, size = 14),
+      axis.text.x = element_text(size = 8, angle = 45, hjust = 1),
+      axis.text.y = element_text(size = 8)
+    )
+}
+
+# Create 4 plots
+plot_list <- map(c(2020, 2021, 2022, 2023), ~make_year_plot(monthly_by_year, .x))
+
+# Arrange 2x2
+combined <- ggarrange(plotlist = plot_list, ncol = 2, nrow = 2, align = 'hv')
+
+annotate_figure(combined,
+                top = text_grob("Monthly Eviction Filings by Year", 
+                                face = "bold", size = 16),
+                left = text_grob("Total Filings", rot = 90, size = 12))
+```
 
 
+# Eviction Filings by Month Across Years
+```{r}
+# aggregate by year and month
+monthly_by_year <- df %>%
+  group_by(year, month) %>%
+  summarise(total_filings = sum(filings_2020, na.rm = TRUE), .groups = "drop") %>%
+  filter(year %in% c(2020, 2021, 2022, 2023))
+
+# Function to create plot for each month
+make_month_plot <- function(data, month_num) {
+  month_data <- data %>% filter(month == month_num)
+  month_label <- month.abb[month_num]
+  
+  years_present <- sort(unique(month_data$year))
+  year_labels <- substr(as.character(years_present), 3, 4)
+  
+  ggplot(month_data) +
+    geom_col(aes(x = factor(year), y = total_filings), 
+             fill = "darkseagreen3", color = "black", width = 0.7) +
+    scale_x_discrete(labels = year_labels) +
+    labs(title = month_label, x = NULL, y = NULL) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(face = "bold", hjust = 0.5, size = 11),
+      axis.text.x = element_text(size = 8),
+      axis.text.y = element_text(size = 8)
+    )
+}
+
+# Create 12 plots
+plot_list <- map(1:12, ~make_month_plot(monthly_by_year, .x))
+
+# Arrange 3x4
+combined <- ggarrange(plotlist = plot_list, ncol = 4, nrow = 3, align = 'hv')
+
+annotate_figure(combined,
+                top = text_grob("Eviction Filings by Month Across Years", 
+                                face = "bold", size = 14),
+                left = text_grob("Total Filings", rot = 90, size = 11))
+```
 
 
+# Eviction Map
+```{r}
+# aggregate filings by GEOID and year
+evictions_by_tract_year <- df %>%
+  group_by(GEOID, year) %>%
+  summarise(total_filings = sum(filings_2020, na.rm = TRUE), .groups = "drop") %>%
+  filter(year %in% c(2020, 2021, 2022, 2023))
+
+# join with census tract geometry
+evictions_map_data <- philly_tract_sf %>%
+  left_join(evictions_by_tract_year, by = "GEOID")
+
+# function to create map for each year
+make_year_map <- function(data, year_num) {
+  year_data <- data %>% filter(year == year_num)
+  
+  ggplot(year_data) +
+    geom_sf(aes(fill = total_filings), color = NA, lwd = 0) +
+    scale_fill_viridis_c(
+      option = "inferno",
+      name = "Filings",
+      na.value = "grey90"
+    ) +
+    labs(title = as.character(year_num)) +
+    theme_void() +
+    theme(
+      plot.title = element_text(face = "bold", hjust = 0.5, size = 14),
+      legend.position = "right",
+      legend.key.height = unit(0.8, "cm"),
+      legend.key.width = unit(0.3, "cm")
+    )
+}
+
+# create 4 maps
+map_list <- map(c(2020, 2021, 2022, 2023), ~make_year_map(evictions_map_data, .x))
+
+combined_maps <- ggarrange(plotlist = map_list, ncol = 2, nrow = 2, 
+                            common.legend = TRUE, legend = "right")
+
+annotate_figure(combined_maps,
+                top = text_grob("Eviction Filings by Census Tract (2020-2023)", 
+                                face = "bold", size = 16))
+```
 
 
+# Local Moran's I
+```{r}
+# aggregate total filings by tract (across all years or pick one year)
+evictions_by_tract <- df %>%
+  filter(year == 2023) %>%
+  group_by(GEOID) %>%
+  summarise(total_filings = sum(filings_2020, na.rm = TRUE), .groups = "drop")
+# join to geometry
+evictions_sf <- philly_tract_sf %>%
+  left_join(evictions_by_tract, by = "GEOID") %>%
+  filter(!is.na(total_filings))
+# create spatial weights (queen contiguity)
+neighbors <- poly2nb(evictions_sf, queen = TRUE)
+weights <- nb2listw(neighbors, style = "W", zero.policy = TRUE)
+# calculate Local Moran's I
+local_moran <- localmoran(evictions_sf$total_filings, weights, zero.policy = TRUE)
+# add results to sf object
+evictions_sf <- evictions_sf %>%
+  mutate(
+    local_i = local_moran[, 1],
+    p_value = local_moran[, 5],
+    scaled_filings = scale(total_filings),
+    lag_scaled = lag.listw(weights, scaled_filings, zero.policy = TRUE),
+    # classify hot/cold spots
+    hotspot_type = case_when(
+      scaled_filings > 0 & lag_scaled > 0 & p_value < 0.05 ~ "Hot Spot (High-High)",
+      scaled_filings < 0 & lag_scaled < 0 & p_value < 0.05 ~ "Cold Spot (Low-Low)",
+      scaled_filings > 0 & lag_scaled < 0 & p_value < 0.05 ~ "High-Low Outlier",
+      scaled_filings < 0 & lag_scaled > 0 & p_value < 0.05 ~ "Low-High Outlier",
+      TRUE ~ "Not Significant"
+    )
+  )
+# plot LISA map
+ggplot(evictions_sf) +
+  geom_sf(aes(fill = hotspot_type), color = NA) +
+  scale_fill_manual(
+    values = c(
+      "Hot Spot (High-High)" = "#d7191c",
+      "Cold Spot (Low-Low)" = "#2c7bb6",
+      "High-Low Outlier" = "#fdae61",
+      "Low-High Outlier" = "#abd9e9",
+      "Not Significant" = "grey90"
+    ),
+    name = "Cluster Type"
+  ) +
+  labs(
+    title = "Eviction Hot Spots and Cold Spots (2023)",
+    subtitle = "Local Moran's I Cluster Analysis",
+    caption = "Hot spots = High evictions surrounded by high evictions"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(face = "bold", size = 16),
+    legend.position = "right"
+  )
+```
 
 
+# Distance from hot spot
+```{r}
+#identify hot spot centroids from LISA analysis above
+hotspot_tracts <- evictions_sf %>%
+  filter(hotspot_type == "Hot Spot (High-High)")
 
+hotspot_centroids <- st_centroid(hotspot_tracts)
+
+# calculate distance from each tract to nearest hot spot
+all_tracts <- philly_tract_sf %>%
+  left_join(evictions_by_tract, by = "GEOID")
+
+tract_centroids <- st_centroid(all_tracts)
+
+# distance to nearest hot spot
+dist_to_hotspot <- st_distance(tract_centroids, hotspot_centroids)
+all_tracts$dist_to_hotspot <- apply(dist_to_hotspot, 1, min)
+all_tracts$dist_to_hotspot_km <- as.numeric(all_tracts$dist_to_hotspot) / 1000
+
+# plot distance map
+ggplot(all_tracts) +
+  geom_sf(aes(fill = dist_to_hotspot_km), color = NA) +
+  scale_fill_viridis_c(
+    option = "plasma",
+    name = "Distance\n(km)",
+    direction = -1
+  ) +
+  geom_sf(data = hotspot_tracts, fill = NA, color = "red", size = 0.8) +
+  labs(
+    title = "Distance to Eviction Hot Spots",
+    subtitle = "Red outlines = Hot spot tracts",
+    caption = "Darker = closer to high-eviction clusters"
+  ) +
+  theme_void() +
+  theme(plot.title = element_text(face = "bold", size = 16))
+```
+
+
+# Eviction vs Unemployment Rate
+```{r}
+# prepare data
+map_data <- df_final %>%
+  group_by(GEOID) %>%
+  summarise(
+    total_filings = sum(filings_2020, na.rm = TRUE),
+    unemployment = mean(unemployment_rate, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+map_sf <- philly_tract_sf %>%
+  left_join(map_data, by = "GEOID") %>%
+  filter(!is.na(total_filings) & !is.na(unemployment))
+
+# create tertiles for each variable
+map_sf <- map_sf %>%
+  mutate(
+    filings_class = ntile(total_filings, 3),
+    unemp_class = ntile(unemployment, 3),
+    bi_class = paste0(unemp_class, "-", filings_class)
+  )
+
+# define bivariate color palette
+bivariate_colors <- c(
+  "1-1" = "#e8e8e8",  # Low unemployment, Low evictions
+  "2-1" = "#ace4e4",  # Med unemployment, Low evictions
+  "3-1" = "#5ac8c8",  # High unemployment, Low evictions
+  "1-2" = "#dfb0d6",  # Low unemployment, Med evictions
+  "2-2" = "#a5add3",  # Med unemployment, Med evictions
+  "3-2" = "#5698b9",  # High unemployment, Med evictions
+  "1-3" = "#be64ac",  # Low unemployment, High evictions
+  "2-3" = "#8c62aa",  # Med unemployment, High evictions
+  "3-3" = "#3b4994"   # High unemployment, High evictions
+)
+
+# map
+map1 <- ggplot(map_sf) +
+  geom_sf(aes(fill = bi_class), color = NA) +
+  scale_fill_manual(values = bivariate_colors, na.value = "grey90", guide = "none") +
+  labs(
+    title = "Eviction Filings vs Unemployment Rate",
+    subtitle = "Darker purple = High evictions AND high unemployment"
+  ) +
+  theme_void() +
+  theme(plot.title = element_text(face = "bold", size = 16))
+
+legend1 <- ggplot(legend_data, aes(x = x, y = y, fill = bi_class)) +
+  geom_tile() +
+  scale_fill_manual(values = bivariate_colors, guide = "none") +
+  labs(x = "Unemployment →", y = "Evictions →") +
+  theme_void() +
+  theme(
+    axis.title.x = element_text(size = 8, margin = margin(t = 8)),
+    axis.title.y = element_text(size = 8, angle = 90, margin = margin(r = 8))
+  ) +
+  coord_fixed()
+
+final_plot1 <- ggdraw() +
+  draw_plot(map1, 0, 0, 1, 1) +
+  draw_plot(legend1, 0.68, 0.02, 0.28, 0.28)
+
+print(final_plot1)
+```
+
+# Eviction vs Median Gross Rent
+```{r}
+# prepare data
+map_data <- df_final %>%
+  group_by(GEOID) %>%
+  summarise(
+    total_filings = sum(filings_2020, na.rm = TRUE),
+    median_rent = first(median_rent.y),
+    .groups = "drop"
+  )
+
+map_sf <- philly_tract_sf %>%
+  left_join(map_data, by = "GEOID") %>%
+  filter(!is.na(total_filings) & !is.na(median_rent))
+
+# create tertiles for each variable
+map_sf <- map_sf %>%
+  mutate(
+    filings_class = ntile(total_filings, 3),
+    rent_class = ntile(median_rent, 3),
+    bi_class = paste0(rent_class, "-", filings_class)
+  )
+
+# define bivariate color palette (different colors for this one)
+bivariate_colors2 <- c(
+  "1-1" = "#e8e8e8",  # Low rent, Low evictions
+  "2-1" = "#b8d6be",  # Med rent, Low evictions
+  "3-1" = "#73ae80",  # High rent, Low evictions
+  "1-2" = "#dfb0d6",  # Low rent, Med evictions
+  "2-2" = "#a5add3",  # Med rent, Med evictions
+  "3-2" = "#5698b9",  # High rent, Med evictions
+  "1-3" = "#be64ac",  # Low rent, High evictions
+  "2-3" = "#8c62aa",  # Med rent, High evictions
+  "3-3" = "#3b4994"   # High rent, High evictions
+)
+
+# map
+map2 <- ggplot(map_sf) +
+  geom_sf(aes(fill = bi_class), color = NA) +
+  scale_fill_manual(values = bivariate_colors2, na.value = "grey90", guide = "none") +
+  labs(
+    title = "Eviction Filings vs Median Rent",
+    subtitle = "Darker purple = High evictions AND high rent"
+  ) +
+  theme_void() +
+  theme(plot.title = element_text(face = "bold", size = 16))
+
+legend_data <- expand.grid(x = 1:3, y = 1:3) %>%
+  mutate(bi_class = paste0(x, "-", y))
+
+legend2 <- ggplot(legend_data, aes(x = x, y = y, fill = bi_class)) +
+  geom_tile() +
+  scale_fill_manual(values = bivariate_colors2, guide = "none") +
+  labs(x = "Rent →", y = "Evict. →") +
+  theme_void() +
+  theme(
+    axis.title.x = element_text(size = 9, margin = margin(t = 5)),
+    axis.title.y = element_text(size = 9, angle = 90, margin = margin(r = 5))
+  ) +
+  coord_fixed()
+
+final_plot2 <- ggdraw() +
+  draw_plot(map2, 0, 0, 1, 1) +
+  draw_plot(legend2, 0.7, 0.05, 0.22, 0.22)
+
+print(final_plot2)
+```
+
+
+# Evication vs Median Household Income
+```{r}
+# prepare data
+map_data <- df_final %>%
+  group_by(GEOID) %>%
+  summarise(
+    total_filings = sum(filings_2020, na.rm = TRUE),
+    median_income = first(median_hh_income),
+    .groups = "drop"
+  )
+
+map_sf <- philly_tract_sf %>%
+  left_join(map_data, by = "GEOID") %>%
+  filter(!is.na(total_filings) & !is.na(median_income))
+
+# create tertiles for each variable
+map_sf <- map_sf %>%
+  mutate(
+    filings_class = ntile(total_filings, 3),
+    income_class = ntile(median_income, 3),
+    bi_class = paste0(income_class, "-", filings_class)
+  )
+
+# define bivariate color palette (blue-red for income-eviction)
+bivariate_colors3 <- c(
+  "1-1" = "#e8e8e8",  # Low income, Low evictions
+  "2-1" = "#b5c0da",  # Med income, Low evictions
+  "3-1" = "#6c83b5",  # High income, Low evictions
+  "1-2" = "#f0b8b8",  # Low income, Med evictions
+  "2-2" = "#ad9ea5",  # Med income, Med evictions
+  "3-2" = "#567994",  # High income, Med evictions
+  "1-3" = "#e64b35",  # Low income, High evictions
+  "2-3" = "#985356",  # Med income, High evictions
+  "3-3" = "#3b4994"   # High income, High evictions
+)
+
+# map
+map3 <- ggplot(map_sf) +
+  geom_sf(aes(fill = bi_class), color = NA) +
+  scale_fill_manual(values = bivariate_colors3, na.value = "grey90", guide = "none") +
+  labs(
+    title = "Eviction Filings vs Median Household Income",
+    subtitle = "Orange = High evictions AND low income"
+  ) +
+  theme_void() +
+  theme(plot.title = element_text(face = "bold", size = 16))
+
+legend_data <- expand.grid(x = 1:3, y = 1:3) %>%
+  mutate(bi_class = paste0(x, "-", y))
+
+legend3 <- ggplot(legend_data, aes(x = x, y = y, fill = bi_class)) +
+  geom_tile() +
+  scale_fill_manual(values = bivariate_colors3, guide = "none") +
+  labs(x = "Income →", y = "Evict. →") +
+  theme_void() +
+  theme(
+    axis.title.x = element_text(size = 9, margin = margin(t = 5)),
+    axis.title.y = element_text(size = 9, angle = 90, margin = margin(r = 5))
+  ) +
+  coord_fixed()
+
+final_plot3 <- ggdraw() +
+  draw_plot(map3, 0, 0, 1, 1) +
+  draw_plot(legend3, 0.7, 0.05, 0.22, 0.22)
+
+print(final_plot3)
+```
 
 
 # Regression
