@@ -429,6 +429,20 @@ df_final=df_census_sf%>%
 ```
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Regression
 ```{r}
 
 df_final$evibypop=df_final$filings_avg/df_final$total_pop
