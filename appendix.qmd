@@ -426,14 +426,17 @@ commodities = commodities %>%
 
 df = df %>%
   left_join(commodities, by = c("first_of_month" = "half_year_date"))
+
 df = df %>%
-  arrange(first_of_month) %>%
+  arrange(week_date) %>%
   fill(comcpi, .direction = "down")
 
 ```
 
-### merge with zillow rent index
+### merge with census data 
 ```{r}
+df_census=df%>%
+  left_join(philly_tract_data,by="GEOID")
 
 ```
 
