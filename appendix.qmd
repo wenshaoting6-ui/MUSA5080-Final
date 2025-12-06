@@ -414,11 +414,28 @@ df.test=df%>%
 
 #merge with commodities cpi
 
+commodities = commodities %>%
+  mutate(
+    comcpi = Value, 
+    half_year_date = case_when(
+      Period == "S01" ~ ymd(paste(Year, "01", "01")), # Half 1 -> Jan 1
+      Period == "S02" ~ ymd(paste(Year, "07", "01"))  # Half 2 -> Jul 1
+    )
+  ) %>%
+  select(half_year_date, comcpi)
 
-
+df = df %>%
+  left_join(commodities, by = c("first_of_month" = "half_year_date"))
+df = df %>%
+  arrange(first_of_month) %>%
+  fill(comcpi, .direction = "down")
 
 ```
 
+### merge with zillow rent index
+```{r}
+
+```
 
 
 # PHASE 2: EXPLORATORY DATA ANALYSIS
