@@ -20,7 +20,7 @@ library(spatstat)
 library(terra)
 library(ggplot2)
 library(arrow)
-
+library(tigris)
 
 ```
 ```{r}
@@ -437,6 +437,18 @@ df = df %>%
 ```{r}
 df_census=df%>%
   left_join(philly_tract_data,by="GEOID")
+
+philly_tract=tracts( state = 'PA',
+        county = '101',
+        year = 2023
+)
+
+philly_tract_sf=philly_tract%>%
+  select(GEOID,geometry)
+
+df_census_sf=df_census%>%
+  left_join(philly_tract_sf,by="GEOID")
+
 
 ```
 
