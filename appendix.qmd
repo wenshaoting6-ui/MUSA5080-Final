@@ -294,7 +294,8 @@ philly_tract_sf=st_transform(philly_tract_sf,crs=32618)
 phillyrental_proj_1923=phillyrental_proj_1923%>%
   st_join(philly_tract_sf,join = st_within)
 
-
+phillyrental_proj_1619=phillyrental_proj_1619%>%
+  st_join(philly_tract_sf,join = st_within)
 
 
 ```
@@ -458,8 +459,30 @@ df_census=df%>%
 df_census_sf=df_census%>%
   left_join(philly_tract_sf,by="GEOID")
 
+```
+
+
+### merge with rent data
+```{r}
+#calculate rent by month and tract
+rent_by_month_tract=phillyrental_proj_1923%>%
+  st_drop_geometry()%>%
+  mutate(date=format(DATE_POSTED,"%Y-%m"))%>%
+  select(GEOID,RENT_PRICE,date)%>%
+  group_by(GEOID,date)%>%
+    summarise(median_rent=median(RENT_PRICE))
+
+#merge with evictiondata
+
+df=df%>%
+  mutate(date=format(week_date,"%Y-%m"))%>%
+  
+  left_join(rent_by_month_tract,by=c("date","GEOID"))
+
 
 ```
+
+
 
 
 # PHASE 2: EXPLORATORY DATA ANALYSIS
