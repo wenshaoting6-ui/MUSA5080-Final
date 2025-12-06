@@ -21,7 +21,8 @@ library(terra)
 library(ggplot2)
 library(arrow)
 library(tigris)
-
+library(car)
+library(lmtest)
 ```
 ```{r}
 df=read.csv(here("data/philadelphia_monthly_2020_2021.csv"))
@@ -301,81 +302,6 @@ phillyrental_proj_1619=phillyrental_proj_1619%>%
 ```
 
 
-
-### Commercial and office points of interests (Amenities)(alternative in the next section if you do not want to download pbf data)
-
-```{r, eval=FALSE}
-# downloading osm data from geofabrik:https://download.geofabrik.de/north-america/us-northeast.html
-
-#input_pbf <- "the pdf file downloaded from the link above"
-
-
-# get boundary of Philadelphia County
-pa_counties <- counties(state = "PA", year = 2023)
-
-# Filter to Philadelphia County
-philly_boundary <- subset(pa_counties, NAME == "Philadelphia")
-
-# read the full OSM PBF (you can select layer types like points, lines, polygons)
-poi <- oe_read(input_pbf, 
-                       boundary = philly_boundary, 
-                       boundary_type = "clipsrc", 
-                       layer = "points")  # or "lines" / "multipolygons"
-
-
-keywords <- c("shop","amenity","office","historic","tourism","healthcare",
-              "building","leisure")
-pattern <- paste0(keywords, collapse = "|")
-
-# ==== Filter by 'other_tags' ====
-if ("other_tags" %in% names(poi)) {
-  poi$other_tags <- iconv(as.character(poi$other_tags), from = "", to = "UTF-8", sub = "")
-  poi$other_tags[is.na(poi$other_tags)] <- ""
-  
-  poi_filtered <- poi %>%
-    filter(grepl(pattern, other_tags, ignore.case = TRUE))
-  
-  cat("filtered POIs found:", nrow(poi_filtered), "of", nrow(poi), "\n")
-  
-} 
-
-```
-
-### Alternative: filtered POI if you donot want to download osm data
-```{r}
-
-poi_path <- here("data", "filtered poi")
-poi_shp_path=file.path(poi_path, "philadelphia_poi_filtered.shp")
-poi=st_read(poi_shp_path)
-```
-
-
-```{r}
-# get boundary of Philadelphia County
-pa_counties <- counties(state = "PA", year = 2023)
-
-# Filter to Philadelphia County
-philly_boundary <- subset(pa_counties, NAME == "Philadelphia")
-
-philly_boundary <- st_transform(philly_boundary, 3364)  
-poi <- st_transform(poi, 3364)
-# ==== Prepare point pattern ====
-# Convert sf points to spatstat ppp object
-win <- as.owin(st_union(philly_boundary))  # window from county boundary
-coords <- st_coordinates(poi)
-pp <- ppp(x = coords[,1], y = coords[,2], window = win)
-
-# ==== Run Kernel Density Estimation ====
-# Sigma = bandwidth in map units (here, meters)
-density_map <- density.ppp(pp, sigma = 300* 3.28084, edge = TRUE, at = "pixels",eps = c(100, 100))
-
-# ==== Convert to raster ====
-r_Economic <- rast(density_map)
-crs(r_Economic) <- st_crs(philly_boundary)$proj4string
-r_Economic <- mask(r_Economic, vect(philly_boundary))
-
-```
-
 ### load quartly wage data
 ```{r}
 file_list <- list.files(
@@ -450,6 +376,19 @@ df = df %>%
 
 ```
 
+### merge with unemployment data
+```{r}
+unemployment=read.csv("data/unemployment.csv")
+unemployment$week_date=ym(unemployment$Label)
+df=unemployment%>%
+  mutate(unemployment_rate=Value)%>%
+  select(unemployment_rate,week_date)%>%
+  right_join(df,by="week_date")
+
+
+```
+
+
 ### merge with census data 
 ```{r}
 df_census=df%>%
@@ -468,576 +407,76 @@ df_census_sf=df_census%>%
 rent_by_month_tract=phillyrental_proj_1923%>%
   st_drop_geometry()%>%
   mutate(date=format(DATE_POSTED,"%Y-%m"))%>%
-  select(GEOID,RENT_PRICE,date)%>%
+  select(GEOID,RENT_PRICE,date,NEIGHBORHOOD)%>%
   group_by(GEOID,date)%>%
     summarise(median_rent=median(RENT_PRICE))
+```
 
-#merge with evictiondata
 
-df=df%>%
+### Final data frame
+
+```{r}
+
+#merge with eviction data
+df_final=df_census_sf%>%
   mutate(date=format(week_date,"%Y-%m"))%>%
-  
-  left_join(rent_by_month_tract,by=c("date","GEOID"))
-
-
+  filter(year(week_date) %in% c(2020:2023))%>%
+  left_join(rent_by_month_tract,by=c("date","GEOID"))%>%
+  select(GEOID,unemployment_rate,foodcpi,electricitycpi,avg_wkly_wage,
+         filings_avg,comcpi,total_pop,pct_white,pct_black,pct_asian,
+         median_hh_income,pct_renter,median_year_built_renter,aggregate_rooms,
+         median_rooms,total_hh,pct_family,median_rent.y)
 ```
 
 
-
-
-# PHASE 2: EXPLORATORY DATA ANALYSIS
-
-### Distribution of evictaion rate (histogram)
 ```{r}
-# Calculate the median / mean to plot
-filings_median <- median(df$filings_avg, na.rm = TRUE)
 
-ggplot(df, aes(filings_avg)) +
-  geom_histogram(bins = 60, fill = "darkseagreen3", color = "black") +
-  geom_vline(xintercept = filings_median, linetype = 5) +
-  annotate("text",
-           x = filings_median, 
-           y = 6300, 
-           label = "Median",
-           hjust = -0.2, 
-           color = "black", 
-           size = 3) +
-  scale_x_continuous() +
-  labs(title = "Distribution of Weekly Eviction Rate",
-       subtitle = "For Philadelphia Residential Properties in 2023-2024",
-       x = "Eviction Rate",
-       y = "Count") +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(face = "bold")
-  )
+df_final$evibypop=df_final$filings_avg/df_final$total_pop
+set.seed(123)
+n <- nrow(df_final)
+
+# 70% training, 30% testing
+train_indices <- sample(1:n, size = 0.7 * n)
+train_data <- df_final[train_indices, ]
+test_data <- df_final[-train_indices, ]
+```
+
+```{r}
+#run regression based on houses own characteristic
+options(scipen = 999)
+
+model1=lm(evibypop~median_rent.y+foodcpi+electricitycpi+avg_wkly_wage+median_rent.y+pct_white+median_hh_income+pct_renter+unemployment_rate+median_year_built_renter+aggregate_rooms+pct_family+total_hh+pct_black+pct_asian+comcpi,data=df_final)
+summary(model1)
 
 ```
 
-### Distribution of evictaion rate by week (histogram)
 ```{r}
-# Calculate the median / mean to plot
-df$year=year(df$week_date)
-df$yearmonth <- ym(format(df$week_date, "%Y-%m"))
-filings_median <- median(df$filings_avg, na.rm = TRUE)
-
-ggplot(df) +
-  geom_col(aes(x =yearmonth , y = filings_avg), 
-           fill = "darkseagreen3", color = "black") +
-  geom_hline(yintercept = filings_median, linetype = 5) +
-  annotate("text",
-           x = max(df$yearmonth), 
-           y = filings_median, 
-           label = paste("Median:", round(filings_median, 1)),
-           hjust = 1, vjust = -0.5,
-           color = "black", 
-           size = 3) +
-  labs(title = "Weekly Average Eviction Filings",
-       subtitle = "For Philadelphia Residential Properties in 2023-2024",
-       x = "Week",
-       y = "Average Filings") +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(face = "bold")
-  )
+vif(model1)
+```
 
 
-df$month=month(df$week_date)
+```{r}
+bptest(model1)
+```
 
-
-
-
-df_2020=df%>%
-  filter(year==2020)
-
-df_1619Q <- df_2020sum1916 %>%
-  mutate(q = case_when(
-    month %in% c(1, 2, 3) ~ 1,
-    month %in% c(4, 5, 6) ~ 2,
-    month %in% c(7, 8, 9) ~ 3,
-    month %in% c(10, 11, 12) ~ 4
-  ))
-
-df_1619Q=df_1619Q%>%
-  group_by(q)%>%
-  summarise(sum=sum(sum))
-
-
-df_2020Q <- df_2020sum %>%
-  mutate(q = case_when(
-    month %in% c(1, 2, 3) ~ 1,
-    month %in% c(4, 5, 6) ~ 2,
-    month %in% c(7, 8, 9) ~ 3,
-    month %in% c(10, 11, 12) ~ 4
-  ))
-
-df_2020Q=df_2020Q%>%
-  group_by(q)%>%
-  summarise(sum=sum(sum))
-
-
-df_2021Q <- df_2021sum %>%
-  mutate(q = case_when(
-    month %in% c(1, 2, 3) ~ 1,
-    month %in% c(4, 5, 6) ~ 2,
-    month %in% c(7, 8, 9) ~ 3,
-    month %in% c(10, 11, 12) ~ 4
-  ))
-
-df_2021Q=df_2021Q%>%
-  group_by(q)%>%
-  summarise(sum=sum(sum))
-
-
-df_2022Q <- df_2022sum %>%
-  mutate(q = case_when(
-    month %in% c(1, 2, 3) ~ 1,
-    month %in% c(4, 5, 6) ~ 2,
-    month %in% c(7, 8, 9) ~ 3,
-    month %in% c(10, 11, 12) ~ 4
-  ))
-
-df_2022Q=df_2022Q%>%
-  group_by(q)%>%
-  summarise(sum=sum(sum))
-
-df_2023Q <- df_2023sum %>%
-  mutate(q = case_when(
-    month %in% c(1, 2, 3) ~ 1,
-    month %in% c(4, 5, 6) ~ 2,
-    month %in% c(7, 8, 9) ~ 3,
-    month %in% c(10, 11, 12) ~ 4
-  ))
-
-df_2023Q=df_2023Q%>%
-  group_by(q)%>%
-  summarise(sum=sum(sum))
-
-df_2024Q <- df_2024sum %>%
-  mutate(q = case_when(
-    month %in% c(1, 2, 3) ~ 1,
-    month %in% c(4, 5, 6) ~ 2,
-    month %in% c(7, 8, 9) ~ 3,
-    month %in% c(10, 11, 12) ~ 4
-  ))
-
-df_2024Q=df_2024Q%>%
-  group_by(q)%>%
-  summarise(sum=sum(sum))
-
-df_2025Q <- df_2025sum %>%
-  mutate(q = case_when(
-    month %in% c(1, 2, 3) ~ 1,
-    month %in% c(4, 5, 6) ~ 2,
-    month %in% c(7, 8, 9) ~ 3,
-    month %in% c(10, 11, 12) ~ 4
-  ))
-
-df_2025Q=df_2025Q%>%
-  group_by(q)%>%
-  summarise(sum=sum(sum))
-
-
-
-
-plt1=ggplot(df_1619Q) +
-  geom_col(aes(x =q , y = sum), 
-           fill = "darkseagreen3", color = "black") +
-  geom_hline(yintercept = filings_median, linetype = 5) +
-  annotate("text",
-           x = max(df_1619Q$q), 
-           y = filings_median, 
-           label = paste("Median:", round(filings_median, 1)),
-           hjust = 1, vjust = -0.5,
-           color = "black", 
-           size = 3) +
-  labs(
-       x = "Week",
-       y = "Average Filings") +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(face = "bold")
-  )
-
-plt2=ggplot(df_2020Q) +
-  geom_col(aes(x =q , y = sum), 
-           fill = "darkseagreen3", color = "black") +
-  geom_hline(yintercept = filings_median, linetype = 5) +
-  annotate("text",
-           x = max(df_2020Q$q), 
-           y = filings_median, 
-           label = paste("Median:", round(filings_median, 1)),
-           hjust = 1, vjust = -0.5,
-           color = "black", 
-           size = 3) +
-  labs(
-       x = "Week",
-       y = "Average Filings") +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(face = "bold")
-  )
-
-plt3=ggplot(df_2021Q) +
-  geom_col(aes(x =q , y = sum), 
-           fill = "darkseagreen3", color = "black") +
-  geom_hline(yintercept = filings_median, linetype = 5) +
-  annotate("text",
-           x = max(df_2021Q$q), 
-           y = filings_median, 
-           label = paste("Median:", round(filings_median, 1)),
-           hjust = 1, vjust = -0.5,
-           color = "black", 
-           size = 3) +
-  labs(
-       x = "Week",
-       y = "Average Filings") +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(face = "bold")
-  )
-
-plt4=ggplot(df_2022Q) +
-  geom_col(aes(x =q , y = sum), 
-           fill = "darkseagreen3", color = "black") +
-  geom_hline(yintercept = filings_median, linetype = 5) +
-  annotate("text",
-           x = max(df_2022Q$q), 
-           y = filings_median, 
-           label = paste("Median:", round(filings_median, 1)),
-           hjust = 1, vjust = -0.5,
-           color = "black", 
-           size = 3) +
-  labs(
-       x = "Week",
-       y = "Average Filings") +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(face = "bold")
-  )
-
-plt5=ggplot(df_2023Q) +
-  geom_col(aes(x =q , y = sum), 
-           fill = "darkseagreen3", color = "black") +
-  geom_hline(yintercept = filings_median, linetype = 5) +
-  annotate("text",
-           x = max(df_2023Q$q), 
-           y = filings_median, 
-           label = paste("Median:", round(filings_median, 1)),
-           hjust = 1, vjust = -0.5,
-           color = "black", 
-           size = 3) +
-  labs(
-       x = "Week",
-       y = "Average Filings") +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(face = "bold")
-  )
-
-
-plt6=ggplot(df_2024Q) +
-  geom_col(aes(x =q , y = sum), 
-           fill = "darkseagreen3", color = "black") +
-  geom_hline(yintercept = filings_median, linetype = 5) +
-  annotate("text",
-           x = max(df_2024Q$q), 
-           y = filings_median, 
-           label = paste("Median:", round(filings_median, 1)),
-           hjust = 1, vjust = -0.5,
-           color = "black", 
-           size = 3) +
-  labs(
-       x = "Week",
-       y = "Average Filings") +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(face = "bold")
-  )
-
-
-plt7=ggplot(df_2025Q) +
-  geom_col(aes(x =q , y = sum), 
-           fill = "darkseagreen3", color = "black") +
-  geom_hline(yintercept = filings_median, linetype = 5) +
-  annotate("text",
-           x = max(df_2025Q$q), 
-           y = filings_median, 
-           label = paste("Median:", round(filings_median, 1)),
-           hjust = 1, vjust = -0.5,
-           color = "black", 
-           size = 3) +
-  labs(
-       x = "Week",
-       y = "Average Filings") +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(face = "bold")
-  )
-
-library(ggpubr)
-ggarrange(plt1, plt2, plt3,plt4,plt5,plt6,plt7, ncol = 4, nrow = 2, align = 'h')
-
+```{r}
+test=df_census_sf%>%
+  filter(GEOID=="42101000101")%>%
+  select(filings_avg,week_date)
 ```
 
 
 
 ```{r}
-df_2020=df%>%
-  filter(year==2020)
+#p-value is way too small, implying more variables may be needed (make sense)
 
-df_2020sum1916=df_2020%>%
-  group_by(month)%>%
-  summarise(sum=sum(filings_avg_prepandemic_baseline))
-df_2020sum=df_2020%>%
-  group_by(month)%>%
-  summarise(sum=sum(filings_avg))
-df_2021=df%>%
-  filter(year==2021)
-df_2021sum=df_2021%>%
-  group_by(month)%>%
-  summarise(sum=sum(filings_avg))
-df_2022=df%>%
-  filter(year==2022)
-df_2022sum=df_2022%>%
-  group_by(month)%>%
-  summarise(sum=sum(filings_avg))
-df_2023=df%>%
-  filter(year==2023)
-df_2023sum=df_2023%>%
-  group_by(month)%>%
-  summarise(sum=sum(filings_avg))
-
-df_2024=df%>%
-  filter(year==2024)
-df_2024sum=df_2024%>%
-  group_by(month)%>%
-  summarise(sum=sum(filings_avg))
-
-df_2025=df%>%
-  filter(year==2025)
-df_2025sum=df_2025%>%
-  group_by(month)%>%
-  summarise(sum=sum(filings_avg))
-
-plt1=ggplot(df_2020sum1916) +
-  geom_col(aes(x =month , y = sum), 
-           fill = "darkseagreen3", color = "black") +
-  geom_hline(yintercept = filings_median, linetype = 5) +
-  annotate("text",
-           x = max(df_2020sum1916$month), 
-           y = filings_median, 
-           label = paste("Median:", round(filings_median, 1)),
-           hjust = 1, vjust = -0.5,
-           color = "black", 
-           size = 3) +
-  labs(
-       x = "Week",
-       y = "Average Filings") +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(face = "bold")
-  )
-
-plt2=ggplot(df_2020sum) +
-  geom_col(aes(x =month , y = sum), 
-           fill = "darkseagreen3", color = "black") +
-  geom_hline(yintercept = filings_median, linetype = 5) +
-  annotate("text",
-           x = max(df_2020$month), 
-           y = filings_median, 
-           label = paste("Median:", round(filings_median, 1)),
-           hjust = 1, vjust = -0.5,
-           color = "black", 
-           size = 3) +
-  labs(
-       x = "Week",
-       y = "Average Filings") +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(face = "bold")
-  )
-
-plt3=ggplot(df_2021sum) +
-  geom_col(aes(x =month , y = sum), 
-           fill = "darkseagreen3", color = "black") +
-  geom_hline(yintercept = filings_median, linetype = 5) +
-  annotate("text",
-           x = max(df_2021$month), 
-           y = filings_median, 
-           label = paste("Median:", round(filings_median, 1)),
-           hjust = 1, vjust = -0.5,
-           color = "black", 
-           size = 3) +
-  labs(
-       x = "Week",
-       y = "Average Filings") +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(face = "bold")
-  )
-
-plt4=ggplot(df_2022sum) +
-  geom_col(aes(x =month , y = sum), 
-           fill = "darkseagreen3", color = "black") +
-  geom_hline(yintercept = filings_median, linetype = 5) +
-  annotate("text",
-           x = max(df_2022$month), 
-           y = filings_median, 
-           label = paste("Median:", round(filings_median, 1)),
-           hjust = 1, vjust = -0.5,
-           color = "black", 
-           size = 3) +
-  labs(
-       x = "Week",
-       y = "Average Filings") +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(face = "bold")
-  )
-
-plt5=ggplot(df_2023sum) +
-  geom_col(aes(x =month , y = sum), 
-           fill = "darkseagreen3", color = "black") +
-  geom_hline(yintercept = filings_median, linetype = 5) +
-  annotate("text",
-           x = max(df_2023$month), 
-           y = filings_median, 
-           label = paste("Median:", round(filings_median, 1)),
-           hjust = 1, vjust = -0.5,
-           color = "black", 
-           size = 3) +
-  labs(
-       x = "Week",
-       y = "Average Filings") +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(face = "bold")
-  )
+#calculate the RMSE
+model_train_1 <- lm(evibypop~median_rent.y+foodcpi+electricitycpi+avg_wkly_wage+median_rent.y+pct_white+median_hh_income+pct_renter+unemployment_rate+median_year_built_renter+aggregate_rooms+pct_family+total_hh+pct_black+pct_asian+comcpi,data = train_data)
+test_predictions_1 <- predict(model_train_1, newdata = test_data)
+rmse_test_1 <- sqrt(mean((test_data$log_price - test_predictions_1)^2,na.rm = TRUE))
+rmse_train_1 <- summary(model_train_1)$sigma
 
 
-plt6=ggplot(df_2024sum) +
-  geom_col(aes(x =month , y = sum), 
-           fill = "darkseagreen3", color = "black") +
-  geom_hline(yintercept = filings_median, linetype = 5) +
-  annotate("text",
-           x = max(df_2023$month), 
-           y = filings_median, 
-           label = paste("Median:", round(filings_median, 1)),
-           hjust = 1, vjust = -0.5,
-           color = "black", 
-           size = 3) +
-  labs(
-       x = "Week",
-       y = "Average Filings") +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(face = "bold")
-  )
-
-
-plt7=ggplot(df_2025sum) +
-  geom_col(aes(x =month , y = sum), 
-           fill = "darkseagreen3", color = "black") +
-  geom_hline(yintercept = filings_median, linetype = 5) +
-  annotate("text",
-           x = max(df_2023$month), 
-           y = filings_median, 
-           label = paste("Median:", round(filings_median, 1)),
-           hjust = 1, vjust = -0.5,
-           color = "black", 
-           size = 3) +
-  labs(
-       x = "Week",
-       y = "Average Filings") +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(face = "bold")
-  )
-
-library(ggpubr)
-ggarrange(plt1, plt2, plt3,plt4,plt5,plt6,plt7, ncol = 4, nrow = 2, align = 'h')
-windows(width = 15, height =5 )
-plt1+plt2+plt3+plt4+plt5
+plot(model1)
 ```
-
-### spatial join
-```{r}
-
-# join census variables to tract shapefile
-philly_tracts <- philly_tract_sf %>%
-  left_join(philly_tract_data, by = "GEOID")
-
-# KDE POI density to census tracts
-philly_tracts_projected <- st_transform(philly_tracts, 3364)
-
-philly_tracts_projected$poi_density <- terra::extract(
-  r_Economic, 
-  vect(philly_tracts_projected), 
-  fun = mean, 
-  na.rm = TRUE
-)[, 2]
-
-philly_tracts_final <- st_transform(philly_tracts_projected, 4326)
-
-```
-
-```{r}
-# aggregate eviction data by tract and QUARTER
-df_evictions <- df %>%
-  group_by(GEOID, year, quarter) %>%
-  summarise(
-    eviction_count = sum(filings_avg, na.rm = TRUE),
-    eviction_baseline = sum(filings_avg_prepandemic_baseline, na.rm = TRUE),
-    avg_wkly_wage = first(avg_wkly_wage),
-    foodcpi = first(foodcpi),
-    electricitycpi = first(electricitycpi),
-    .groups = "drop"
-  )
-
-# join everything into final modeling dataset
-model_data <- philly_tracts_final %>%
-  left_join(df_evictions, by = "GEOID") %>%
-  filter(!is.na(eviction_count))
-
-# check result
-glimpse(model_data)
-```
-
-
-```{r}
-# aggregate eviction data by tract and MONTH
-df_evictions_monthly <- df %>%
-  group_by(GEOID, year, month) %>%
-  summarise(
-    eviction_count = sum(filings_avg, na.rm = TRUE),
-    eviction_baseline = sum(filings_avg_prepandemic_baseline, na.rm = TRUE),
-    foodcpi = first(foodcpi),           # monthly - OK
-    electricitycpi = first(electricitycpi),  # monthly - OK
-    .groups = "drop"
-  ) %>%
-  mutate(quarter = ceiling(month / 3))  # add quarter for wage join
-
-# join wage separately (since it's quarterly)
-df_evictions_monthly <- df_evictions_monthly %>%
-  left_join(
-    wage_data %>% select(year, qtr, avg_wkly_wage) %>% rename(quarter = qtr),
-    by = c("year", "quarter")
-  )
-
-model_data_monthly <- philly_tracts_final %>%
-  left_join(df_evictions_monthly, by = "GEOID") %>%
-  filter(!is.na(eviction_count))
-
-# check result
-glimpse(model_data_monthly)
-```
-
-
-```{r}
-colSums(is.na(model_data_monthly))
-```
-
-
-
 
