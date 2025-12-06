@@ -24,11 +24,9 @@ library(tigris)
 
 ```
 ```{r}
-df=read.csv(here("data/philadelphia_weekly_2020_2021 (1).csv"))
-df$week_date <- ymd(df$week_date)
+df=read.csv(here("data/philadelphia_monthly_2020_2021.csv"))
+df$week_date <- my(df$month)
 df$first_of_month=floor_date(df$week_date,"month")
-df$days_since_first=as.numeric(df$week_date-df$first_of_month)
-df$week_of_month <- ceiling((df$days_since_first + 1) / 7)
 summary(df)
 ```
 
@@ -426,7 +424,7 @@ df=food%>%
   select(first_of_month,foodcpi)%>%
   right_join(df, by="first_of_month")
 
-df.test=df%>%
+df=df%>%
   arrange(week_date)%>%
   fill(foodcpi, .direction = "up")
 
