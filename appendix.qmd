@@ -281,8 +281,6 @@ phillyrental_proj_1619=phillyrental_proj%>%
   year(DATE_POSTED) %in% c(2016:2019)
 )
 
-write.csv(phillyrental_proj_1923,"data/1923rent.csv")
-
 ```
 
 
@@ -392,7 +390,7 @@ food=read.csv(here('data/food.csv'))
 electricity=read.csv(here('data/electricity.csv'))
 commodities=read.csv(here('data/commodities.csv'))
 
-
+#merge with electricity cpi
 df$month=month(df$week_date)
 electricity$month=as.numeric(gsub("M","",electricity$Period))
 df$yearm=paste0(df$year,df$month)
@@ -403,6 +401,7 @@ df=electricity%>%
   select(yearm,electricitycpi)%>%
   right_join(df,by="yearm")
 
+#merge with food cpi
 food$first_of_month=ym(food$Label)
 df=food%>%
   mutate(foodcpi=Value)%>%
@@ -410,7 +409,14 @@ df=food%>%
   right_join(df, by="first_of_month")
 
 df.test=df%>%
-  arrange(week_date)
+  arrange(week_date)%>%
+  fill(foodcpi, .direction = "up")
+
+#merge with commodities cpi
+
+
+
+
 ```
 
 
