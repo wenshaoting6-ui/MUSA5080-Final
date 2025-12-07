@@ -660,9 +660,6 @@ monthly_by_year <- df %>%
   summarise(total_filings = sum(filings_2020, na.rm = TRUE), .groups = "drop") %>%
   filter(year %in% c(2020, 2021, 2022, 2023))
 
-# Check the data
-print(monthly_by_year, n = 48)
-
 # Function to create plot for each year
 make_year_plot <- function(data, year_num) {
   year_data <- data %>% filter(year == year_num)
@@ -698,7 +695,7 @@ This figure shows monthly eviction filings in Philadelphia from 2020 to 2023. Th
 
 ### Eviction Filings by Month Across Years
 
-```{r}
+```{r, warning=FALSE}
 # aggregate by year and month
 monthly_by_year <- df %>%
   group_by(year, month) %>%
@@ -742,7 +739,7 @@ These graphs show the eviction filings across different years by month. There is
 
 ### Eviction Filings by Quarter Across Years
 
-```{r}
+```{r, warning=FALSE}
 
 # Aggregate by year and quarter
 quarterly_data <- df %>%
@@ -786,7 +783,7 @@ These are graphs that look at eviction filings on a quarterly basis across years
 
 ### Eviction Map on Census Tract level from 2020-2023
 
-```{r}
+```{r, warning=FALSE}
 # aggregate filings by GEOID and year
 evictions_by_tract_year <- df %>%
   group_by(GEOID, year) %>%
@@ -833,7 +830,7 @@ Eviction hot spots remain spatially persistent across all four years, concentrat
 
 ### Local Moran's I
 
-```{r}
+```{r, warning=FALSE}
 # aggregate total filings by tract (across all years or pick one year)
 evictions_by_tract <- df %>%
   filter(year == 2023) %>%
@@ -893,7 +890,7 @@ The map shows that significant eviction hot spots concentrated in North Philadel
 
 ### Distance from hot spot
 
-```{r}
+```{r, warning=FALSE}
 #identify hot spot centroids from LISA analysis above
 hotspot_tracts <- evictions_sf %>%
   filter(hotspot_type == "Hot Spot (High-High)")
@@ -933,7 +930,7 @@ The Far Northeast and South Philadelphia are the most distant from high-eviction
 
 ### Eviction vs Unemployment Rate
 
-```{r}
+```{r, warning=FALSE}
 
 # prepare data
 map_data <- df_final %>%
@@ -1008,7 +1005,7 @@ This map shows that high concentration of evictions with high unemployment occur
 
 ### Eviction vs Median Gross Rent
 
-```{r}
+```{r, warning=FALSE}
 # prepare data
 map_data <- df_final %>%
   st_drop_geometry() %>%  
@@ -1080,7 +1077,7 @@ This map shows that high eviction areas are predominantly concentrated in lower-
 
 ### Evication vs Median Household Income
 
-```{r}
+```{r, warning=FALSE}
 # prepare data
 map_data <- df_final %>%
   st_drop_geometry() %>%  # ADD THIS LINE
@@ -1398,7 +1395,7 @@ validation_model4 <- train(filings_2020 ~
 
 stargazer(
   model4,
-  type = "text",
+  type = "html",
   title = "Model 4",
   covariate.labels = c(
     "Unemployment Rate (%)",
@@ -1435,7 +1432,7 @@ The model shows that current unemployment has a strong negative association with
 
 ### Validation comparision between four different models
 Based on the validation result, Model 4 has the lowest RMSE and MAE while still maintain a good R2, as a result, we decide Model 4 as our best model. 
-```{r}
+```{r, warning=FALSE}
 cv_results <- data.frame(
   Model = c("Model 1: Poisson (Demographics Only)",
             "Model 2: Negative Binomial (Demographics Only)",
@@ -1476,7 +1473,7 @@ kable(
 
 ### Prediction Error Map
 
-```{r}
+```{r, warning=FALSE}
 library(gridExtra)
 
 # Generate predictions and errors
@@ -1520,7 +1517,7 @@ print(p1)
 
 The model shows higher prediction errors concentrated in North Philadelphia and scattered tracts in West Philadelphia. This corresponds to the eviction hot spots identified in the earlier analysis. Lower errors appear in South Philadelphia, Center City, and the Far Northeast, where eviction rates are generally lower and more stable. The gray tracts represent missing data. Overall, the model struggles more in high eviction neighborhoods. It suggests that some additional spatial or socioeconomic features may be needed to improve predictions in these areas. It could be helpful if we could design spatial feature to tacklet the issue. 
 
-```{r}
+```{r, warning=FALSE}
 # observed vs predicted by policy period
 ggplot(df_filtered, aes(x = filings_2020, y = predicted)) +
   geom_point(alpha = 0.2, color = "#3182bd") +
@@ -1539,7 +1536,7 @@ ggplot(df_filtered, aes(x = filings_2020, y = predicted)) +
 
 Across these three different policy periods, the model underpredicts eviction filings. The model performs best during the Moratorium period when overall filings were low. During the Normal period, the model struggles  with high-filing tracts. The Post-Moratorium period shows a similar pattern of underprediction, indicating the model may be missing some important predictors.
 
-```{r}
+```{r, warning=FALSE}
 # errors vs demographics
 error_demo_plots <- function(data, x_var, x_lab) {
   ggplot(data, aes(x = .data[[x_var]], y = MAE)) +
