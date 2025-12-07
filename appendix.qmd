@@ -1390,7 +1390,7 @@ validation_model4 <- train(filings_2020 ~
 ```
 
 ### Output for model 4 
-```{r}
+```{r, warning=FALSE}
 #| label: tbl-model4-results
 #| tbl-cap: "Negative Binomial Regression Results (Model 4)"
 #| results: asis
@@ -1429,9 +1429,11 @@ stargazer(
 )
 
 ```
+The model shows that current unemployment has a strong negative association with eviction filings (-0.254), while lagged unemployment exhibits a positive effect (0.055), suggesting that evictions may be delayed responses to economic distress as households exhaust resources over time, it makes sense as based on our research, the eviction would not happen after 45 days the renters did not pay rent. Housing affordability measures show mixed effects: while higher median rents are associated with fewer filings (-0.120), as more wealthy people tend to rent expensive apartments, and their wealth made them less likely to violate the contrast (not pay rent). Neighborhoods with higher percentages of renters (0.020) and greater rent burden (0.002) experience more eviction filings, which makes sense. The model captures strong temporal effects, with the eviction moratorium period showing 17% fewer filings (β = -0.182) and the post-moratorium period showing 27% fewer filings (β = -0.311), indicating lasting changes in eviction patterns. Racial disparities are evident, with higher percentages of Black residents associated with increased filings (0.010). Notably, economic activity density has a strong negative association ( -5,370), suggesting that neighborhoods with more concentrated economic opportunities experience fewer evictions, possibly due to better employment access or different housing market dynamics.
+
 
 ### Validation comparision between four different models
-Based on the validation result, Model 4 has the lowest RMSE and MAE while still mainting a good R2, as a reuslt, we decide Model 4 as our best model. 
+Based on the validation result, Model 4 has the lowest RMSE and MAE while still maintain a good R2, as a result, we decide Model 4 as our best model. 
 ```{r}
 cv_results <- data.frame(
   Model = c("Model 1: Poisson (Demographics Only)",
