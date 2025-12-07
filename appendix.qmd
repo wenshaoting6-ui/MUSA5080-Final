@@ -21,7 +21,7 @@ Some of the tangible actions that we wish to see include emergency rental assist
 # Data Processing
 ### Load Library
 
-```{r}
+```{r, cathe=TRUE,message=FALSE,warning=FALSE}
 #load packages
 library(tidycensus) 
 library(tidyverse)
@@ -43,13 +43,15 @@ library(ggplot2)
 library(cowplot)
 library(stargazer)
 library(knitr)
+library(ggpubr)
+options(tigris_use_cache = TRUE)
+options(tigris_progress = FALSE) 
 ```
 ```{r}
 #load monthly eviction data
 df=read.csv(here("data/philadelphia_monthly_2020_2021.csv"))
 df$week_date <- my(df$month)
 df$first_of_month=floor_date(df$week_date,"month")
-summary(df)
 ```
 
 ### Philadelphia shapefile
@@ -274,7 +276,7 @@ philly_tract_sf=philly_tract%>%
 
 As the median gross rent in ACS 5-year census data fails to capture the temporal monthly changes, we use Dewey rental data to compensate it. Dewey rentalhub web-scraped rental data from over 100+ sources. It has both specific locations, rental prices and date posted, making it possible for us to filter it to Philadelphia and then calculate the median gross rent by census tract per month to see how the changes in rent influence the eviction rate monthly. 
 
-```{r}
+```{r, message=FALSE}
 #input data
 folder_path <- "data/rental-in-philly"
 all_parquet_files <- open_dataset(
@@ -317,7 +319,7 @@ phillyrental_proj_1923=phillyrental_proj_1923%>%
 
 Moreover, we also consider if the change on the wage would influence the eviction rate. However, there is no tract level wage data per month. Instead, we use Philadelphia wage data by quarter, which means we have to assume wage level on different census tract is the same. 
 
-```{r, include=FALSE}
+```{r, message=FALSE}
 file_list <- list.files(
   path = "data",
   pattern = ".q1-q4 42101 Philadelphia County, Pennsylvania.csv",
@@ -422,7 +424,7 @@ df_census_sf=philly_tract_sf%>%
 
 Reading in Philadelphia Neighborhoods as a shp object. This will allow us to aggregate data on neighborhoods to identify neighborhood fixed effect.
 
-```{r}
+```{r,warning=FALSE}
 neighborhood_folder <- here("data", "philadelphia-neighborhoods")
 neighborhood_path   <- file.path(neighborhood_folder, "philadelphia-neighborhoods.shp")
 
@@ -464,7 +466,7 @@ df_census_sf_final$MHI_quantile <- cut(
 ```
 
 ### Merge with rent data
-```{r}
+```{r, message=FALSE}
 #calculate rent by month and tract
 rent_by_month_tract=phillyrental_proj_1923%>%
   st_drop_geometry()%>%
@@ -515,8 +517,8 @@ if ("other_tags" %in% names(poi)) {
 ```
 
 ### Alternative: filtered POI if you donot want to download osm data
-```{r}
-
+```{r, message=FALSE}
+#| message: false
 poi_path <- here("data", "filtered poi")
 poi_shp_path=file.path(poi_path, "philadelphia_poi_filtered.shp")
 poi=st_read(poi_shp_path)
@@ -555,7 +557,7 @@ r_Economic <- mask(r_Economic, vect(philly_boundary))
 ```
 
 ### Final data frame
-```{r}
+```{r, message=FALSE,warning=FALSE}
 library(raster)
 #merge with eviction data
 df_census_sf_final$KDE <- raster::extract(
@@ -651,8 +653,6 @@ This figure displays monthly eviction filings in Philadelphia from January 2020 
 ### Monthly Eviction Filings by Year
 
 ```{r}
-library(ggpubr)
-
 # Aggregate by year and month
 monthly_by_year <- df %>%
   group_by(year, month) %>%
@@ -1256,16 +1256,19 @@ stargazer(
 
 
 ## Model 1: Possion regression of eviction rate on demographic characteristics
-As eviction is count data, we first use Poisson model.  
-```{r}
+
+```{r, cathe=TRUE,message=FALSE,warning=FALSE}
 library(MASS)
 library(caret)
+library(AER)
+```
+
+As eviction is count data, we first use Poisson model.  
+```{r}
 #run regression based on census characteristic
 options(scipen = 999)
 
 model1=glm(filings_2020~pct_white+median_hh_income+pct_renter+unemployment_rate+median_year_built_renter+aggregate_rooms+pct_family+total_hh+pct_black+pct_asian,family = "poisson",data=df_filtered)
-summary(model1)
-
 ```
 
 ### Check multicollinearity using VIF
@@ -1291,14 +1294,10 @@ validation_model1 <- train(filings_2020 ~ pct_white + median_hh_income + pct_ren
                method = "glm",family=poisson,
                trControl = train_control,
   na.action = na.omit)
-
-print(validation_model1)
-
 ```
 ### Test for Dispersion 
 over dispersion exists in the data, we have to switch to negative binomial model instead
 ```{r}
-library(AER)
 dispersiontest(model1)
 ```
 
@@ -1307,7 +1306,6 @@ dispersiontest(model1)
 As the assumption for poission model does not hold, we use negative binomial model instead
 ```{r}
 model2=glm.nb(filings_2020~pct_white+median_hh_income+pct_renter+unemployment_rate+median_year_built_renter+aggregate_rooms+pct_family+total_hh+pct_black+pct_asian, data=df_filtered)
-summary(model2)
 ```
 
 ### 10-fold cross validation for model 2
@@ -1322,8 +1320,6 @@ validation_model2 <- train(filings_2020 ~ pct_white + median_hh_income + pct_ren
                trControl = train_control,
   na.action = na.omit,
   tuneGrid = data.frame(link = "log"))
-
-print(validation_model2)
 ```
 
 ### Model 3: Negative binomial regression with all the cpi, EconKDE, unemployment rate, some period fixed effects and income quantiles
@@ -1333,7 +1329,6 @@ model3=glm.nb(filings_2020~median_rent.y + avg_wkly_wage + median_hh_income +
   pct_renter + unemployment_rate + median_year_built_renter + 
   pct_family + pct_black + electricitycpi + factor(year) + 
   MHI_quantile + log_pop+mora+EconKDE+I(EconKDE^2)+foodcpi+comcpi,data=df_filtered)
-summary(model3)
 ```
 
 ### Check multicollinearity for Model 3
@@ -1360,8 +1355,6 @@ validation_model3 <- train(filings_2020~median_rent.y + avg_wkly_wage + median_h
                trControl = train_control,
   na.action = na.omit,
   tuneGrid = data.frame(link = "log"))
-
-print(validation_model3)
 ```
 
 
@@ -1379,8 +1372,6 @@ model4 <- glm.nb(
     offset(log_pop)+EconKDE+pct_rent_burdened,
   data = df_filtered
 )
-
-summary(model4)
 ```
 ### 10-fold cross validation for model 4
 ```{r}
@@ -1396,8 +1387,6 @@ validation_model4 <- train(filings_2020 ~
                trControl = train_control,
   na.action = na.omit,
   tuneGrid = data.frame(link = "log"))
-
-print(validation_model4)
 ```
 
 ### Output for model 4 
