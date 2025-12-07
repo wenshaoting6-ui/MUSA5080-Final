@@ -455,18 +455,104 @@ rent_by_month_tract=rent_by_month_tract%>%
     summarise(median_rent=median(RENT_PRICE))
 ```
 
+### Commercial and office points of interests (Amenities)(alternative in the next section if you do not want to download pbf data)
+
+```{r, eval=FALSE}
+# downloading osm data from geofabrik:https://download.geofabrik.de/north-america/us-northeast.html
+
+#input_pbf <- "the pdf file downloaded from the link above"
+
+
+# get boundary of Philadelphia County
+pa_counties <- counties(state = "PA", year = 2023)
+
+# Filter to Philadelphia County
+philly_boundary <- subset(pa_counties, NAME == "Philadelphia")
+
+# read the full OSM PBF (you can select layer types like points, lines, polygons)
+poi <- oe_read(input_pbf, 
+                       boundary = philly_boundary, 
+                       boundary_type = "clipsrc", 
+                       layer = "points")  # or "lines" / "multipolygons"
+
+
+keywords <- c("shop","amenity","office","historic","tourism","healthcare",
+              "building","leisure")
+pattern <- paste0(keywords, collapse = "|")
+
+# ==== Filter by 'other_tags' ====
+if ("other_tags" %in% names(poi)) {
+  poi$other_tags <- iconv(as.character(poi$other_tags), from = "", to = "UTF-8", sub = "")
+  poi$other_tags[is.na(poi$other_tags)] <- ""
+  
+  poi_filtered <- poi %>%
+    filter(grepl(pattern, other_tags, ignore.case = TRUE))
+  
+  cat("filtered POIs found:", nrow(poi_filtered), "of", nrow(poi), "\n")
+  
+} 
+
+```
+
+### Alternative: filtered POI if you donot want to download osm data
+```{r}
+
+poi_path <- here("data", "filtered poi")
+poi_shp_path=file.path(poi_path, "philadelphia_poi_filtered.shp")
+poi=st_read(poi_shp_path)
+```
+
+### Kernel Density Rasters (Economic activities density)
+```{r}
+# get boundary of Philadelphia County
+pa_counties <- counties(state = "PA", year = 2023)
+
+# Filter to Philadelphia County
+philly_boundary <- subset(pa_counties, NAME == "Philadelphia")
+
+philly_boundary <- st_transform(philly_boundary, 3364)  
+poi <- st_transform(poi, 3364)
+# ==== Prepare point pattern ====
+# Convert sf points to spatstat ppp object
+win <- as.owin(st_union(philly_boundary))  # window from county boundary
+coords <- st_coordinates(poi)
+pp <- ppp(x = coords[,1], y = coords[,2], window = win)
+
+# ==== Run Kernel Density Estimation ====
+# Sigma = bandwidth in map units (here, meters)
+density_map <- density.ppp(pp, sigma = 300* 3.28084, edge = TRUE, at = "pixels",eps = c(100, 100))
+
+# ==== Convert to raster ====
+r_Economic <- rast(density_map)
+crs(r_Economic) <- st_crs(philly_boundary)$proj4string
+r_Economic <- mask(r_Economic, vect(philly_boundary))
+
+```
+
+
+
+
 ### Final data frame
 
 ```{r}
+library(raster)
 #merge with eviction data
+df_census_sf_final$KDE <- raster::extract(
+  r_Economic,
+  df_census_sf_final,
+  fun = mean,        
+  na.rm = TRUE
+)
+
 df_final=df_census_sf_final%>%
   mutate(date=format(week_date,"%Y-%m"))%>%
   filter(year(week_date) %in% c(2020:2023))%>%
   left_join(rent_by_month_tract,by=c("date","GEOID"))%>%
+  mutate(EconKDE = KDE$lyr.1)%>%
   dplyr::select(GEOID,unemployment_rate,foodcpi,electricitycpi,avg_wkly_wage,
          filings_2020,comcpi,total_pop,pct_white,pct_black,pct_asian,
          median_hh_income,pct_renter,median_year_built_renter,aggregate_rooms,
-         median_rooms,total_hh,pct_family,median_rent.y,MHI_quantile,week_date,year)
+         median_rooms,total_hh,pct_family,median_rent.y,MHI_quantile,week_date,year,EconKDE,pct_rent_burdened)
 ```
 
 # EXPLORATORY DATA ANALYSIS
@@ -1170,7 +1256,7 @@ model_train_3 <- glm.nb(
   filings_2020 ~ median_rent.y + avg_wkly_wage + median_hh_income + 
   pct_renter + unemployment_rate + median_year_built_renter + 
   pct_family + pct_black + electricitycpi + factor(year) + 
-  MHI_quantile + offset(log(total_pop))+mora, 
+  MHI_quantile + offset(log(total_pop))+mora+EconKDE+I(EconKDE^2), 
   data = train_data
 )
 
@@ -1194,6 +1280,64 @@ print(paste("Test RMSE:", round(rmse_test_3, 2)))
 plot(model3)
 ```
 
+```{r}
+# Step 1: Feature Engineering
+df_model4 <- df_filtered %>%
+  mutate(
+    # Rent-to-income ratio (replaces having both separately)
+    rent_to_income = median_rent.y / (median_hh_income / 12),
+    rent_to_income = ifelse(is.infinite(rent_to_income) | rent_to_income > 2, NA, rent_to_income),
+    
+    # Log transforms
+    log_pop = log(total_pop + 1),
+    log_rent = log(median_rent.y + 1),
+    
+    # Temporal features
+    mora = ifelse(week_date >= as.Date("2020-03-01") & week_date <= as.Date("2021-08-31"), 1, 0),
+    post_mora = ifelse(week_date >= as.Date("2021-09-01") & week_date <= as.Date("2022-03-31"), 1, 0),
+    winter = ifelse(month(week_date) %in% c(11,12, 1), 1, 0)
+  ) %>%
+  # Lagged unemployment
+  group_by(GEOID) %>%
+  arrange(GEOID, week_date) %>%
+  mutate(unemployment_lag1 = lag(unemployment_rate, 1)) %>%
+  mutate(unemployment_lag3 = lag(unemployment_rate, 3))%>%
+  ungroup() %>%
+  filter(!is.na(unemployment_lag1))
+
+# Step 2: Spatial train/test split (by tract)
+set.seed(123)
+unique_tracts <- unique(df_model4$GEOID)
+train_tracts <- sample(unique_tracts, size = 0.7 * length(unique_tracts))
+train_data4 <- df_model4 %>% filter(GEOID %in% train_tracts)
+test_data4 <- df_model4 %>% filter(!GEOID %in% train_tracts)
+
+# Step 3: Fit Model 4
+model_train_4 <- glm.nb(
+  filings_2020 ~ 
+    unemployment_rate  +unemployment_lag3+ avg_wkly_wage + electricitycpi +
+    log_rent + pct_renter + rent_to_income +
+    pct_black + pct_family +
+    mora + post_mora + winter + factor(year) +
+    MHI_quantile +
+    mora:pct_renter +
+    offset(log_pop)+EconKDE+pct_rent_burdened
+    ,
+  data = train_data4
+)
+
+summary(model_train_4)
+
+# Step 4: Evaluate
+test_predictions_4 <- predict(model_train_4, newdata = test_data4, type = "response")
+train_predictions_4 <- predict(model_train_4, newdata = train_data4, type = "response")
+
+rmse_test_4 <- sqrt(mean((test_data4$filings_2020 - test_predictions_4)^2, na.rm = TRUE))
+rmse_train_4 <- sqrt(mean((train_data4$filings_2020 - train_predictions_4)^2, na.rm = TRUE))
+
+print(paste("Train RMSE:", round(rmse_train_4, 2)))
+print(paste("Test RMSE:", round(rmse_test_4, 2)))
+```
 
 
 # THE IMPLEMENTATION
