@@ -1021,6 +1021,16 @@ df_filtered = df_final %>%
   filter(filings_2020 <= outlier_threshold)%>%
   mutate(mora = ifelse(ymd(week_date) > ymd("2020-02-01") & ymd(week_date) < ymd("2021-09-01"), 1, 0))
 
+df_filtered <- df_filtered %>%
+  arrange(GEOID, week_date) %>%
+  group_by(GEOID) %>%
+  mutate(
+    evictions_lag1 = lag(filings_2020, 1),
+    evictions_lag3 = lag(filings_2020, 3),
+    unemployment_lag1 = lag(unemployment_rate, 1),
+    rent_change = median_rent.y - lag(median_rent.y, 1)
+  ) %>%
+  ungroup()
 
 set.seed(123)
 n <- nrow(df_filtered)
@@ -1183,6 +1193,8 @@ print(paste("Test RMSE:", round(rmse_test_3, 2)))
 
 plot(model3)
 ```
+
+
 
 # THE IMPLEMENTATION
 
