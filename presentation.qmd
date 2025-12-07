@@ -39,7 +39,19 @@ theme_light_minimal <- function() {
 }
 ```
 
-##  {background-color="#ffffff"}
+## {background-color="#ffffff"}
+
+<style>
+.reveal {
+  font-size: 32px;
+}
+.reveal h2 {
+  font-size: 1.8em;
+}
+.reveal table {
+  font-size: 0.85em;
+}
+</style>
 
 <br>
 
@@ -53,24 +65,24 @@ theme_light_minimal <- function() {
 
 <br><br>
 
-[**Tim Wen & Ye Zhang** | December 2025]{style="font-size: 0.9em; color: #64748b;"}
+[**Tim Wen & Ye Zhang** | Fall 2025]{style="font-size: 0.9em; color: #64748b;"}
 
 ------------------------------------------------------------------------
 
-## THE PROBLEM {background-color="#ffffff"}
+## The Problem {background-color="#ffffff"}
 
 ::: columns
 ::: {.column width="50%"}
 [**Why Eviction Prediction Matters**]{style="color: #1d4ed8;"}
 
-- **13,499** eviction filings over past 12 months 
-- Leads to homelessness & health consequences
+- Leads to housing instability and negative health outcomes
+- Perpetuates poverty and community disinvestment
 - Current response is **reactive** — too late
 
 [**Who is Affected?**]{style="color: #1d4ed8;"}
 
 - Low-income renters
-- Rent-burdened households (30%+ on rent)
+- Rent-burdened households (30%+ income on rent)
 - Predominantly Black neighborhoods
 :::
 
@@ -78,7 +90,7 @@ theme_light_minimal <- function() {
 [**The Decision We Inform**]{style="color: #1d4ed8;"}
 
 - Where to deploy emergency rental assistance
-- Which tracts need tenant outreach
+- Which tracts need proactive outreach
 - How to allocate limited city resources
 
 <br>
@@ -89,13 +101,14 @@ theme_light_minimal <- function() {
 
 ------------------------------------------------------------------------
 
-## THE SOLUTION {background-color="#ffffff"}
+## The Solution {background-color="#ffffff"}
 
 ::: columns
 ::: {.column width="50%"}
 [**What We're Predicting**]{style="color: #1d4ed8;"}
 
 - Monthly eviction filing counts by census tract
+- Identify spots for resource targeting
 
 [**How Prediction Helps**]{style="color: #1d4ed8;"}
 
@@ -109,7 +122,7 @@ theme_light_minimal <- function() {
 
 | Current Approach | Our Model |
 |:-----------------|:----------|
-| Wait for filings → React | Predict risk → Intervene early |
+| Wait → React | Predict → Intervene early |
 | Resources spread thin | Targeted allocation |
 | Help comes too late | Prevention-focused |
 
@@ -125,29 +138,30 @@ theme_light_minimal <- function() {
 ::: {.column width="50%"}
 [**Primary Data**]{style="color: #1d4ed8;"}
 
-- **Eviction Lab** (2020–2023): Filing counts
-- **ACS Census**: Demographics, housing, income
+- **Eviction Lab** (2020–2023): Monthly filing counts
+- **ACS 5-Year Census**: Demographics, housing, income
+- **Dewey Rental Data**: Monthly median rent
 - **BLS**: Unemployment, wages, CPI
 
 [**Spatial Features**]{style="color: #1d4ed8;"}
 
-- Economic activity density (KDE)
-- Distance to eviction hot spots
+- Economic activity density (KDE from OSM POIs)
+- Neighborhood income quantiles
 :::
 
 ::: {.column width="50%"}
 [**Panel Structure**]{style="color: #1d4ed8;"}
 
 - **Unit**: Census tract × month
-- **Observations**: ~45,000 tract-months
-- **Validation**: 70/30 train-test split
+- **Time Period**: 2020–2023 (48 months)
+- **Validation**: 10-fold cross-validation
 
 [**Key Variables**]{style="color: #1d4ed8;"}
 
 - Demographics: % Black, % renter
-- Economic: Median income, wages
-- Housing: Rent, building age
-- Temporal: Year FE, moratorium
+- Economic: Median income, weekly wages
+- Housing: Median rent, % rent burdened
+- Temporal: Year FE, moratorium, unemployment lag
 :::
 :::
 
@@ -157,19 +171,20 @@ theme_light_minimal <- function() {
 
 ::: columns
 ::: {.column width="55%"}
-![](image asset/unnamed-chunk-18-1.png){height="450"}
+![](image asset/unnamed-chunk-18-1.png){width="100%"}
 :::
 
 ::: {.column width="45%"}
 [**Key Finding: Moratorium Effect**]{style="color: #1d4ed8;"}
 
-- Filings near **zero** from Mar 2020 – Aug 2021
-- CDC + local protections worked
+- Filings dropped to **near-zero** Apr–Jun 2020
+- CDC + local Emergency Housing Protection Act
+- PHA moratorium through March 2021
 
 [**Post-Moratorium Surge**]{style="color: #1d4ed8;"}
 
-- Filings surged past pre-pandemic levels
-- Backlog effect visible
+- Surged past pre-pandemic levels by mid-2022
+- Peaked August 2022, stabilized in 2023
 
 [**Takeaway:** Prevention policies work]{style="color: #be185d; font-weight: bold;"}
 :::
@@ -181,23 +196,25 @@ theme_light_minimal <- function() {
 
 ::: columns
 ::: {.column width="33%"}
-![](image asset/unnamed-chunk-20-1.png){height="320"}
+![](image asset/unnamed-chunk-20-1.png){width="100%"}
 
-[By Month]{style="font-size: 0.7em; color: #64748b;"}
+[By Month Across Years]{style="font-size: 0.7em; color: #64748b;"}
 :::
 
 ::: {.column width="33%"}
-![](image asset/unnamed-chunk-21-1.png){height="320"}
+![](image asset/unnamed-chunk-21-1.png){width="100%"}
 
 [By Quarter]{style="font-size: 0.7em; color: #64748b;"}
 :::
 
 ::: {.column width="33%"}
-![](image asset/unnamed-chunk-19-1.png){height="320"}
+![](image asset/unnamed-chunk-19-1.png){width="100%"}
 
 [By Year]{style="font-size: 0.7em; color: #64748b;"}
 :::
 :::
+
+[**Key Insight:** 2022 shows highest eviction activity — post-pandemic rebound]{style="font-size: 0.85em; color: #64748b;"}
 
 ------------------------------------------------------------------------
 
@@ -205,17 +222,19 @@ theme_light_minimal <- function() {
 
 ::: columns
 ::: {.column width="50%"}
-![](image asset/unnamed-chunk-24-1.png){height="420"}
-
-[Distance to Eviction Hot Spots]{style="font-size: 0.8em; color: #64748b;"}
-:::
-
-::: {.column width="50%"}
-![](image asset/unnamed-chunk-23-1.png){height="420"}
+![](image asset/unnamed-chunk-23-1.png){width="100%"}
 
 [Hot Spots & Cold Spots (Local Moran's I)]{style="font-size: 0.8em; color: #64748b;"}
 :::
+
+::: {.column width="50%"}
+![](image asset/unnamed-chunk-24-1.png){width="100%"}
+
+[Distance to Eviction Hot Spots]{style="font-size: 0.8em; color: #64748b;"}
 :::
+:::
+
+[**Hot spots in North & West Philly; Cold spots in South Philly & Far Northeast**]{style="font-size: 0.85em; color: #64748b;"}
 
 ------------------------------------------------------------------------
 
@@ -223,78 +242,25 @@ theme_light_minimal <- function() {
 
 ::: columns
 ::: {.column width="33%"}
-![](image asset/unnamed-chunk-25-1.png){height="320"}
+![](image asset/unnamed-chunk-25-1.png){width="100%"}
 
 [vs. Unemployment]{style="font-size: 0.7em; color: #64748b;"}
 :::
 
 ::: {.column width="33%"}
-![](image asset/unnamed-chunk-26-1.png){height="320"}
+![](image asset/unnamed-chunk-26-1.png){width="100%"}
 
 [vs. Median Rent]{style="font-size: 0.7em; color: #64748b;"}
 :::
 
 ::: {.column width="33%"}
-![](image asset/unnamed-chunk-27-1.png){height="320"}
+![](image asset/unnamed-chunk-27-1.png){width="100%"}
 
 [vs. Household Income]{style="font-size: 0.7em; color: #64748b;"}
 :::
 :::
 
-[Purple = High evictions + High risk factor | Concentration in North & West Philly]{style="font-size: 0.85em; color: #64748b;"}
-
-------------------------------------------------------------------------
-
-## Model Approach {background-color="#ffffff"}
-
-::: columns
-::: {.column width="50%"}
-[**Why Negative Binomial Regression?**]{style="color: #1d4ed8;"}
-
-- Count data (0, 1, 2, ... filings per tract)
-- High overdispersion (variance >> mean)
-- Population offset → predicting **rate**, not raw counts
-:::
-
-::: {.column width="50%"}
-[**Model Progression**]{style="color: #1d4ed8;"}
-
-| Model | Description |
-|:------|:------------|
-| 1 | Demographics only (% Black, % renter) |
-| 2 | + Economic indicators (rent, CPI, wages) |
-| 3 | + Year FE, moratorium, income quantiles |
-| **4** | + Temporal lags, seasonality, spatial CV |
-:::
-:::
-
-------------------------------------------------------------------------
-
-## Model Performance {background-color="#ffffff"}
-
-::: columns
-::: {.column width="50%"}
-[**Validation Results (70/30 Split)**]{style="color: #1d4ed8;"}
-
-| Model | Train RMSE | Test RMSE |
-|:------|:-----------|:----------|
-| 1 (Demographics) | 2.42 | 2.40 |
-| 2 (+ Economics) | 2.41 | 2.39 |
-| 3 (+ Year FE) | 2.34 | 2.32 |
-| **4 (Full)** | **2.34** | **2.24** |
-:::
-
-::: {.column width="50%"}
-[**Key Predictors (Model 4)**]{style="color: #1d4ed8;"}
-
-- **% Renter households** — strongest predictor
-- **% Black population** — demographic risk factor
-- **Unemployment rate** — economic stress
-- **Moratorium indicators** — policy effects captured
-- **Economic density (KDE)** — spatial economic activity
-:::
-:::
-
+[**High evictions in low-rent, low-income areas in North & West Philly**]{style="font-size: 0.85em; color: #64748b;"}
 
 ------------------------------------------------------------------------
 
@@ -302,25 +268,54 @@ theme_light_minimal <- function() {
 
 ::: columns
 ::: {.column width="55%"}
-![](image asset/YOUR_ERROR_MAP_FILENAME.png){height="550"}
+![](image asset/unnamed-chunk-30-1.png){width="100%"}
 
-[]{style="font-size: 0.9em; color: #64748b;"}
+[Prediction Errors by Census Tract]{style="font-size: 0.9em; color: #64748b;"}
 :::
 
 ::: {.column width="45%"}
 [**Where Does the Model Struggle?**]{style="color: #1d4ed8;"}
 
--  
--  
+- Higher errors (purple) scattered across the city
+- Some concentration in **South Philly** and **West Philly**
+- Lower errors in **Far Northeast** and parts of **North Philly**
 
 [**Why These Patterns?**]{style="color: #1d4ed8;"}
 
-- 
-- 
+- High-variability tracts harder to predict
+- May need additional spatial features
 
+[**Equity Concern:** Less accurate where help is needed most]{style="color: #be185d; font-weight: bold;"}
 :::
 :::
 
+------------------------------------------------------------------------
+
+## Error Patterns by Demographics {background-color="#ffffff"}
+
+::: columns
+::: {.column width="55%"}
+![](image asset/unnamed-chunk-33-1.png){width="100%"}
+
+[Errors vs. Demographic Characteristics]{style="font-size: 0.9em; color: #64748b;"}
+:::
+
+::: {.column width="45%"}
+[**Systematic Patterns**]{style="color: #1d4ed8;"}
+
+- **Higher income** → slightly lower errors
+- **Higher % Black** → slightly higher MAE
+- **Higher % renter** → increased errors
+- **Higher rent burden** → slightly increased errors
+
+[**Implication**]{style="color: #1d4ed8;"}
+
+- Model performs better in higher income tracts
+- Communities most in need face less accuracy
+
+[**Raises equity concerns about deployment**]{style="color: #be185d; font-weight: bold;"}
+:::
+:::
 ------------------------------------------------------------------------
 
 ## Limitations & Bias {background-color="#ffffff"}
@@ -329,30 +324,28 @@ theme_light_minimal <- function() {
 ::: {.column width="50%"}
 [**Technical Limitations**]{style="color: #1d4ed8;"}
 
-- Only captures **formal filings**
-- Misses informal displacement
-- Census data has 1–2 year lag
-- Heteroskedasticity present
+- Model **underpredicts** in high-eviction tracts
+- Trained on 2020–2023 (COVID-influenced)
+- Spatial autocorrelation suggests missing features
 
 [**Data Gaps**]{style="color: #1d4ed8;"}
 
-- No informal eviction data
-- Limited COVID-era filings
-- Cannot capture threats/harassment
+- ACS 5-year estimates limit granularity
+- Dewey = listing prices, not actual rents
 :::
 
 ::: {.column width="50%"}
 [**Bias Concerns**]{style="color: #1d4ed8;"}
 
-- Model may **reinforce** existing patterns
-- High-risk labels could stigmatize neighborhoods
-- % Black as predictor reflects systemic racism
+- Worse in low-income, Black, rent-burdened areas
+- May **underallocate** to those most in need
 
 [**Who Could Be Harmed?**]{style="color: #1d4ed8;"}
 
-- Over-policed if misused by landlords
-- Stigma → reduced investment
-- Self-fulfilling prophecy risk
+- Flagged tracts may face stigmatization
+- Landlords could misuse scores
+
+[**Need clear governance for accountability**]{style="color: #be185d; font-weight: bold;"}
 :::
 :::
 
@@ -362,39 +355,38 @@ theme_light_minimal <- function() {
 
 ::: columns
 ::: {.column width="50%"}
-[**Monthly Risk Dashboard**]{style="color: #1d4ed8;"}
+[**Monthly Risk Score Dashboard**]{style="color: #1d4ed8;"}
 
-| Tier | Action |
-|:-----|:-------|
-| High | Emergency rental assistance |
-| Medium | Tenant outreach |
-| Low | Monitor |
+| Risk Tier | Action |
+|:----------|:-------|
+| High | Deploy emergency rental assistance |
+| Medium | Proactive tenant outreach |
+| Low | Monitor & update monthly |
 
-[**Data Requirements**]{style="color: #1d4ed8;"}
+[**Data Already Available**]{style="color: #1d4ed8;"}
 
-- Court filing data (already public)
-- Census updates (annual)
-- BLS indicators (monthly)
+Court filings, Census updates, BLS indicators
 :::
 
 ::: {.column width="50%"}
 [**Required Safeguards**]{style="color: #1d4ed8;"}
 
-- Human review of allocation decisions
+- Human review of all allocation decisions
 - Regular audits for disparate impact
 - Transparent methodology
+- Clear governance framework
 
 [**Key Benefits**]{style="color: #1d4ed8;"}
 
-- Early intervention before displacement
-- Efficient resource allocation
-- Data-driven decision making
+- Early intervention **before** displacement
+- Efficient, targeted resource allocation
+- Data-driven but human-supervised
 :::
 :::
 
 ------------------------------------------------------------------------
 
-##  {background-color="#ffffff"}
+## {background-color="#ffffff"}
 
 <br><br>
 
@@ -406,4 +398,4 @@ theme_light_minimal <- function() {
 
 <br>
 
-[Tim & Ye | MUSA 5080 | December 2025]{style="font-size: 0.9em; color: #64748b;"}
+[Tim Wen & Ye Zhang | MUSA 5080 | Fall 2025]{style="font-size: 0.9em; color: #64748b;"}

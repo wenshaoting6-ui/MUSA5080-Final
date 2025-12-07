@@ -47,6 +47,7 @@ library(ggpubr)
 options(tigris_use_cache = TRUE)
 options(tigris_progress = FALSE) 
 ```
+
 ```{r}
 #load monthly eviction data
 df=read.csv(here("data/philadelphia_monthly_2020_2021.csv"))
@@ -1473,6 +1474,96 @@ kable(
 )
 ```
 
+### Prediction Error Map
+
+```{r}
+library(gridExtra)
+
+# Generate predictions and errors
+df_filtered <- df_filtered %>%
+  mutate(
+    predicted = predict(model4, newdata = df_filtered, type = "response"),
+    error = filings_2020 - predicted,
+    abs_error = abs(error),
+    time_period = case_when(
+      mora == 1 ~ "Moratorium",
+      post_mora == 1 ~ "Post-Moratorium",
+      TRUE ~ "Normal"
+    )
+  )
+
+# Aggregate errors by tract
+tract_errors_sf <- df_filtered %>%
+  st_drop_geometry() %>%
+  group_by(GEOID) %>%
+  summarize(
+    MAE = mean(abs_error, na.rm = TRUE),
+    avg_filings = mean(filings_2020, na.rm = TRUE),
+    median_income = first(median_hh_income),
+    pct_black = first(pct_black),
+    pct_renter = first(pct_renter),
+    pct_rent_burdened = first(pct_rent_burdened),
+    .groups = "drop"
+  ) %>%
+  left_join(philly_tract_sf, ., by = "GEOID")
+
+# Prediction Errors
+p1 <- ggplot(tract_errors_sf, aes(fill = MAE)) +
+  geom_sf(color = "white", size = 0.1) +
+  scale_fill_viridis_c(option = "plasma", name = "MAE", direction = -1) +
+  labs(title = "Prediction Errors") +
+  theme_void() +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+
+print(p1)
+```
+
+The model shows higher prediction errors concentrated in North Philadelphia and scattered tracts in West Philadelphia. This corresponds to the eviction hot spots identified in the earlier analysis. Lower errors appear in South Philadelphia, Center City, and the Far Northeast, where eviction rates are generally lower and more stable. The gray tracts represent missing data. Overall, the model struggles more in high eviction neighborhoods. It suggests that some additional spatial or socioeconomic features may be needed to improve predictions in these areas. It could be helpful if we could design spatial feature to tacklet the issue. 
+
+```{r}
+# observed vs predicted by policy period
+ggplot(df_filtered, aes(x = filings_2020, y = predicted)) +
+  geom_point(alpha = 0.2, color = "#3182bd") +
+  geom_abline(slope = 1, intercept = 0, color = "red", linewidth = 1) +
+  geom_smooth(method = "lm", se = FALSE, color = "darkgreen") +
+  facet_wrap(~time_period) +
+  labs(
+    title = "Observed vs. Predicted Eviction Filings",
+    x = "Observed Filings",
+    y = "Predicted Filings",
+    caption = "Red = perfect predictions; Green = model fit"
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold"))
+```
+
+Across these three different policy periods, the model underpredicts eviction filings. The model performs best during the Moratorium period when overall filings were low. During the Normal period, the model struggles  with high-filing tracts. The Post-Moratorium period shows a similar pattern of underprediction, indicating the model may be missing some important predictors.
+
+```{r}
+# errors vs demographics
+error_demo_plots <- function(data, x_var, x_lab) {
+  ggplot(data, aes(x = .data[[x_var]], y = MAE)) +
+    geom_point(alpha = 0.5, color = "#3182bd") +
+    geom_smooth(method = "lm", se = FALSE, color = "red") +
+    labs(title = paste("Errors vs.", x_lab), x = x_lab, y = "MAE") +
+    theme_minimal()
+}
+
+tract_demo <- tract_errors_sf %>% st_drop_geometry() %>% filter(!is.na(MAE))
+
+grid.arrange(
+
+  error_demo_plots(tract_demo, "median_income", "Median Income") + 
+    scale_x_continuous(labels = scales::dollar),
+  error_demo_plots(tract_demo, "pct_black", "% Black"),
+  error_demo_plots(tract_demo, "pct_renter", "% Renter"),
+  error_demo_plots(tract_demo, "pct_rent_burdened", "% Rent Burdened"),
+  ncol = 2
+)
+```
+
+The model performs better in higher income tracts, while prediction errors increase in lower income neighborhoods. Tracts with higher Black population percentages show slightly higher MAE. This could reflect that the model have a hard time predicting majority Black community where it face disproportionate eviction rates. Errors increase with higher renter percentages and higher rent burden. These equity patterns raise some concerns on the model is less accurate in communnity that potentially need more attention.
+
 
 # THE IMPLEMENTATION
 
@@ -1481,3 +1572,16 @@ One of the primary ways to implement this tool is to develop a Monthly Risk Scor
 From the user's perspective, it would be beneficial to develop an Emergency Rental Assistance Application program. This program should also coordinate with the courts to flag cases that appear in high-risk areas.
 
 From a data perspective, we already have the eviction filing, census tract demographics, and economic indicators. These existing resources already provide a large foundation for our prediction model and serve as the base for policy implementation. However, it would also be essential to continue having tools like real-time rental listings that track how the rental listing shifts, as long as these other factors are taken into account.
+
+These implementation ideas of our solution still have some limitations and raise some ethical concerns.One of the limitations is the model's performance, and the model underpredicts eviction filings, especially in high eviction tracts during the post-moratorium period. The tool may underestimate true risk and lead to insufficient resource allocation precisely where help is needed most.
+
+Another limitation is on the data aspect. Our model relies on monthly city-level economic indicators rather than tract-level data. Also, the Dewey rental data source gives listing prices and not the actual rents paid. We have more updated data on evictions and rents, but the ACS 5-year estimates limit our prediction model back in time, and we are unable to fully put it to use. 
+
+One more major limitation is the time. Because of the data that we have, we trained on 2020 to 2023 data, which is a period that was heavily influenced by the COVID-19 pandemic and the moratorium relief program. It is not clear how well the model will generalize to future periods. 
+
+One last limitation in our model is the issue of spatial autocorrelation. While we include fixed effect and KED, the prediction error still appears, and that suggests that we didn't really take into account the unmeasured spatial feature and process, and that's what our model currently misses. 
+
+With these limitations and the implementation of the mode, let's discuss some ethical concerns. The model does not perform relatively well in low-income, black, and rent-burdened communities. These communities are the ones that are most in need, and deploying our tool may systemically underpredict some of the struggles that they may be experiencing. This potentially results in us not being able to allocate enough resources on time.
+
+With one of our implementations, coordinating with courts to flag cases in high-risk areas may raise some privacy concerns. Residents in flagged tracts may face stigmatization, and landlords could use risk to justify discriminatory practices that may not be fair to those residents. It would be important for the affected residents to know how the risk scores are calculated and how the decisions are made based on the prediction. It would be really important to have a clear governance framework that makes the tool accountable and serves the true goods of the impacted community. 
+
