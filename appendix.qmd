@@ -62,12 +62,12 @@ census_shp_path <- file.path(census_path, "philly_tract.shp")
 philly_tract_sf <- st_read(census_shp_path, quiet = TRUE)
 ```
 
-ACS Variables Collected:
+Below are all of the ACS Variables that we think are important and relevant to the care of housing evictionin Philadelphia.
 
 -   Median gross rent: (B25064)
 -   Race: (B02001)
 -   Median household income: (B19013)
--   \% of Renter: (B25003)
+-   % of Renter: (B25003)
 -   Year Built(renter): (B25036)
 -   Number of Room: (B25017)
 -   Room Per Household: (B25020)
@@ -79,7 +79,7 @@ ACS Variables Collected:
 
 ```{r api key, eval=TRUE, include=FALSE}
 
-census_api_key <- ("4a3cbd333d5407aa78ae4e581e634546cb6e540a")
+census_api_key <- ("138db656646183a18ae51e4a7c1e1f5cd64d4b40")
 
 # Define parameters
 my_state  <- "Pennsylvania"
@@ -260,7 +260,9 @@ philly_tract_sf=philly_tract%>%
 
 
 ### Dewey rental data
+
 As the median gross rent in ACS 5-year census data fails to capture the temporal monthly changes, we use Dewey rental data to compensate it. Dewey rentalhub web-scraped rental data from over 100+ sources. It has both specific locations, rental prices and date posted, making it possible for us to filter it to Philadelphia and then calculate the median gross rent by census tract per month to see how the changes in rent influence the eviction rate monthly. 
+
 ```{r}
 #input data
 folder_path <- "data/rental-in-philly"
@@ -301,7 +303,9 @@ phillyrental_proj_1923=phillyrental_proj_1923%>%
 
 
 ### Load quartly wage data
+
 Moreover, we also consider if the change on the wage would influence the eviction rate. However, there is no tract level wage data per month. Instead, we use Philadelphia wage data by quarter, which means we have to assume wage level on different census tract is the same. 
+
 ```{r, include=FALSE}
 file_list <- list.files(
   path = "data",
@@ -328,9 +332,11 @@ df=wage_data%>%
 ```
 
 ### Merge with different CPI and unemployment rate per month in Philadelphia
+
 We also consider other potential living cost that would make people difficult to afford the rent, such as food and electricity, especially after the pandemic food and electricity is getting much more expensive. We use CPI to account for the potential price level increase for these living cost that may influence the eviction rate. What's more, unemployment rate is also included, as more people may not afford the rent when unemployment rate increases. 
 
 Similar to wage data, none of them have monthly data on the census tract level, so we use Philadelphia as the geography and assume the whole geography is homogenous instead. 
+
 ```{r}
 food=read.csv(here('data/food.csv'))
 electricity=read.csv(here('data/electricity.csv'))
@@ -400,7 +406,9 @@ df_census_sf=philly_tract_sf%>%
 ```
 
 ### Merge with neighborhood data
+
 Reading in Philadelphia Neighborhoods as a shp object. This will allow us to aggregate data on neighborhoods to identify neighborhood fixed effect.
+
 ```{r}
 neighborhood_folder <- here("data", "philadelphia-neighborhoods")
 neighborhood_path   <- file.path(neighborhood_folder, "philadelphia-neighborhoods.shp")
@@ -502,9 +510,11 @@ poi=st_read(poi_shp_path)
 ```
 
 ### Kernel Density Rasters (Economic activities density)
+
 Instead of using distance to CBD, we extracted commercial and office points of interests from OpenStreetMap (OSM), and we operate a Kernel Density Estimation (KDE) with a bandwidth of 300 meters. By doing that, we manage to get a surface of density of economic activities across the whole city. The higher the KDE value is, the more economic activities it will be, implying a higher likelihood of the area as a city centers.
 
 There are several benefits using this approach compared to distance to CBD. First, with the development of sub urbanization, even within the context of Philadelphia County, there is still a shift from monocentric model to polycentric model, meaning there multiple centers/sub centers. Using one CBD fail to capture these sub centers, which may also influence housing price. Second, CBD is an area rather than a point, distance method fail to capture this while the continuous surface computed by KDE would have a value of economic activities across the whole city.
+
 ```{r}
 # get boundary of Philadelphia County
 pa_counties <- counties(state = "PA", year = 2023)
@@ -531,9 +541,6 @@ r_Economic <- mask(r_Economic, vect(philly_boundary))
 
 ```
 
-
-
-
 ### Final data frame
 ```{r}
 library(raster)
@@ -557,6 +564,9 @@ df_final=df_census_sf_final%>%
 ```
 
 # EXPLORATORY DATA ANALYSIS
+
+In this phase, we examine the eviction data to identify initial patterns, trends, and potential relationships across space and time. The goal is to build an early understanding of how eviction filings vary and where there are notable clusters.
+
 ### Distribution of eviction counts
 
 ```{r}
@@ -585,7 +595,7 @@ ggplot(tract_totals, aes(x = total_filings)) +
   )
 ```
 
-Most of the tracts have fillings less than 200. There are some tracts that has more than 500 fillings.
+Most of the tracts have filings less than 200. There are some tracts that have more than 500 filings. Overall, we can see the distribution is skewed to the right.This reflects that while eviction is a widespread issue, there are a number of tracts experience high filings. These high-eviction tracts may represent concentrated areas of housing instability and economic issues. 
 
 ### Monthly Eviction Filings from 2020-2023
 
@@ -623,7 +633,7 @@ ggplot(monthly_totals, aes(x = first_of_month, y = total_filings)) +
   )
 ```
 
-This figure displays monthly eviction filings in Philadelphia from January 2020 through late 2023. The COVID-19 eviction caused filings to drop to zero from April-June 2020. By mid-2022, eviction filings surged past pre-pandemic levels, peaking in August 2022 before stabilizing around 2023.
+This figure displays monthly eviction filings in Philadelphia from January 2020 through late 2023. The COVID-19 eviction caused filings to drop to zero from April-June 2020. By mid-2022, eviction filings surged past pre-pandemic levels, peaking in August 2022 before stabilizing around 2023. There is not a apparent pattern among different month across the year. The overall trend is after pandemic, eviction filings begin to raise and after August 2022 it begins to decline. 
 
 ### Monthly Eviction Filings by Year
 
@@ -670,7 +680,7 @@ annotate_figure(combined,
                 left = text_grob("Total Filings", rot = 90, size = 12))
 ```
 
-This figure shows monthly eviction filings in Philadelphia from 2020 to 2023. The COVID-19 caused filings to drop to near-zero from April to June 2020. Then it followed a recovery period in the late 2020. In 2022 and 2023, eviction filings are at higher levels. Second half of 2021 and 2022 and 2023 all exceed pre-pandemic patterns and showing seasonal peaks in late summer.
+This figure shows monthly eviction filings in Philadelphia from 2020 to 2023. The COVID-19 caused filings to drop to near-zero from April to June 2020. Then it followed a recovery period in the late 2020. In 2022 and 2023, eviction filings are at higher levels. Second half of 2021 and 2022 and 2023 all exceed pre-pandemic patterns and showing seasonal peaks in late summer. There isn't a cycle of eviction between different years. 
 
 ### Eviction Filings by Month Across Years
 
@@ -714,7 +724,7 @@ annotate_figure(combined,
                 left = text_grob("Total Filings", rot = 90, size = 11))
 ```
 
-There is no apparent monthly pattern across these four years.
+These graphs show the eviction filings across different years by month. There isn't a consistent seasonal pattern, but it is clear that 2022 has some of the highest eviction activity across nearly all months. This spike reflects a major rebound in filings after the expiration of COVID-19 eviction protections. Although levels decline slightly in 2023, they remain higher than 2021. This indicates that the post-pandemic recovery period continues to place sustained pressure on renters.
 
 ### Eviction Filings by Quarter Across Years
 
@@ -757,6 +767,8 @@ annotate_figure(combined,
                                 face = "bold", size = 16),
                 left = text_grob("Total Filings", rot = 90, size = 12))
 ```
+
+These are graphs that look at eviction filings on a quarterly basis across years. There isn't a consistent pattern that follows through different quarters across years. One noticeable disruption occurs in 2020–2021, when filings dropped sharply due to overlapping federal, state, and local eviction moratoriums. Beginning in 2022, filings raised in all quarters as protections expired. This signals a return toward pre-pandemic eviction situation.
 
 ### Eviction Map on Census Tract level from 2020-2023
 
