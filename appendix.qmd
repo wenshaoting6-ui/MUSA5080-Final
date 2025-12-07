@@ -1319,10 +1319,8 @@ model_train_4 <- glm.nb(
     log_rent + pct_renter + rent_to_income +
     pct_black + pct_family +
     mora + post_mora + winter + factor(year) +
-    MHI_quantile +
-    mora:pct_renter +
-    offset(log_pop)+EconKDE+pct_rent_burdened
-    ,
+    MHI_quantile  +
+    offset(log_pop)+EconKDE+pct_rent_burdened,
   data = train_data4
 )
 
@@ -1337,8 +1335,83 @@ rmse_train_4 <- sqrt(mean((train_data4$filings_2020 - train_predictions_4)^2, na
 
 print(paste("Train RMSE:", round(rmse_train_4, 2)))
 print(paste("Test RMSE:", round(rmse_test_4, 2)))
+
+
+# ===== RMSE =====
+rmse_test_4 <- sqrt(mean((test_data4$filings_2020 - test_predictions_4)^2, na.rm = TRUE))
+rmse_train_4 <- sqrt(mean((train_data4$filings_2020 - train_predictions_4)^2, na.rm = TRUE))
+
+# ===== MAE (Mean Absolute Error) =====
+mae_test_4 <- mean(abs(test_data4$filings_2020 - test_predictions_4), na.rm = TRUE)
+mae_train_4 <- mean(abs(train_data4$filings_2020 - train_predictions_4), na.rm = TRUE)
+
+# ===== R² (R-squared) =====
+# Test R²
+ss_res_test <- sum((test_data4$filings_2020 - test_predictions_4)^2, na.rm = TRUE)
+ss_tot_test <- sum((test_data4$filings_2020 - mean(test_data4$filings_2020, na.rm = TRUE))^2, na.rm = TRUE)
+r2_test_4 <- 1 - (ss_res_test / ss_tot_test)
+
+# Train R²
+ss_res_train <- sum((train_data4$filings_2020 - train_predictions_4)^2, na.rm = TRUE)
+ss_tot_train <- sum((train_data4$filings_2020 - mean(train_data4$filings_2020, na.rm = TRUE))^2, na.rm = TRUE)
+r2_train_4 <- 1 - (ss_res_train / ss_tot_train)
+
+# ===== Print Results =====
+cat("\n=== Model 4 Performance Metrics ===\n\n")
+
+cat("TRAINING SET:\n")
+cat(sprintf("  RMSE: %.2f\n", rmse_train_4))
+cat(sprintf("  MAE:  %.2f\n", mae_train_4))
+cat(sprintf("  R²:   %.4f\n\n", r2_train_4))
+
+cat("TEST SET:\n")
+cat(sprintf("  RMSE: %.2f\n", rmse_test_4))
+cat(sprintf("  MAE:  %.2f\n", mae_test_4))
+cat(sprintf("  R²:   %.4f\n\n", r2_test_4))
+
+# ===== Create comparison dataframe =====
+metrics_df <- data.frame(
+  Metric = c("RMSE", "MAE", "R²"),
+  Train = c(rmse_train_4, mae_train_4, r2_train_4),
+  Test = c(rmse_test_4, mae_test_4, r2_test_4),
+  Difference = c(
+    rmse_test_4 - rmse_train_4,
+    mae_test_4 - mae_train_4,
+    r2_train_4 - r2_test_4  # Note: for R², we want train - test
+  )
+)
+
+print(metrics_df)
 ```
 
+```{r}
+library(pscl)
+
+# ===== McFadden's R² =====
+
+# Method 1: Using pscl package (easiest)
+mcfadden_r2 <- pR2(model_train_4)["McFadden"]
+cat(sprintf("McFadden's R²: %.4f\n", mcfadden_r2))
+
+# Method 2: Manual calculation (more control)
+# Fit null model (intercept only with offset)
+null_model <- glm.nb(
+  filings_2020 ~ 1 + offset(log_pop), 
+  data = train_data4
+)
+
+# Calculate McFadden's R²
+logLik_full <- logLik(model_train_4)[1]
+logLik_null <- logLik(null_model)[1]
+mcfadden_r2_manual <- 1 - (logLik_full / logLik_null)
+
+cat(sprintf("\nMcFadden's R² (manual): %.4f\n", mcfadden_r2_manual))
+
+# Adjusted McFadden's R²
+k <- length(coef(model_train_4))  # number of parameters
+mcfadden_adj <- 1 - ((logLik_full - k) / logLik_null)
+cat(sprintf("Adjusted McFadden's R²: %.4f\n", mcfadden_adj))
+```
 
 # THE IMPLEMENTATION
 
