@@ -1417,7 +1417,7 @@ stargazer(
 ```
 
 ### Validation comparision between four different models
-
+Based on the validation result, Model 4 has the lowest RMSE and MAE while still mainting a good R2, as a reuslt, we decide Model 4 as our best model. 
 ```{r}
 cv_results <- data.frame(
   Model = c("Model 1: Poisson (Demographics Only)",
