@@ -24,6 +24,9 @@ library(tigris)
 library(car)
 library(lmtest)
 library(spdep)
+library(ggpubr)
+library(ggplot2)
+library(cowplot)
 ```
 ```{r}
 df=read.csv(here("data/philadelphia_monthly_2020_2021.csv"))
@@ -394,9 +397,52 @@ df_census=df%>%
   left_join(philly_tract_data,by="GEOID")
 
 
-df_census_sf=df_census%>%
-  left_join(philly_tract_sf,by="GEOID")
+df_census_sf=philly_tract_sf%>%
+  left_join(df_census,by="GEOID")
 ```
+
+### merge with neighborhood data
+```{r}
+neighborhood_folder <- here("data", "philadelphia-neighborhoods")
+neighborhood_path   <- file.path(neighborhood_folder, "philadelphia-neighborhoods.shp")
+
+
+
+
+# Read the shapefile
+philly_neighborhoods <- st_read(neighborhood_path, quiet = TRUE)
+
+philly_neighborhoods=st_transform(philly_neighborhoods, crs=32618)
+df_census_sf=st_join(df_census_sf,philly_neighborhoods)
+census_points=st_centroid(df_census_sf)
+
+points_joined <- st_join(census_points, philly_neighborhoods)
+
+# Calculate mean MHI for each polygon
+mean_mhi_by_poly <- points_joined %>%
+  st_drop_geometry() %>%             
+  group_by(MAPNAME) %>%            
+  summarise(meanMHI = mean(median_hh_income, na.rm = TRUE))
+
+# Join the result back to the polygon layer
+df_census_sf_final <- df_census_sf %>%
+  left_join(mean_mhi_by_poly, by = "MAPNAME")%>%
+  st_as_sf() 
+# reclassify the neighborhood data based on quantile (25%)
+df_census_sf_final$MHI_quantile <- cut(
+  df_census_sf_final$meanMHI,
+  breaks = quantile(
+    df_census_sf_final$meanMHI,
+    probs = seq(0, 1, 0.25),   
+    na.rm = TRUE
+  ),
+  include.lowest = TRUE,
+  labels = c("Q1 (lowest)", "Q2", "Q3", "Q4 (highest)")
+)
+
+```
+
+
 
 
 ### merge with rent data
@@ -414,16 +460,15 @@ rent_by_month_tract=phillyrental_proj_1923%>%
 ### Final data frame
 
 ```{r}
-
 #merge with eviction data
-df_final=df_census_sf%>%
+df_final=df_census_sf_final%>%
   mutate(date=format(week_date,"%Y-%m"))%>%
   filter(year(week_date) %in% c(2020:2023))%>%
   left_join(rent_by_month_tract,by=c("date","GEOID"))%>%
   select(GEOID,unemployment_rate,foodcpi,electricitycpi,avg_wkly_wage,
          filings_2020,comcpi,total_pop,pct_white,pct_black,pct_asian,
          median_hh_income,pct_renter,median_year_built_renter,aggregate_rooms,
-         median_rooms,total_hh,pct_family,median_rent.y)
+         median_rooms,total_hh,pct_family,median_rent.y,MHI_quantile,week_date,year)
 ```
 
 
@@ -865,22 +910,33 @@ print(final_plot3)
 
 # Regression
 ```{r}
+#calculate eviction by population
+df_final$evibypop=df_final$filings_2020/df_final$total_pop*100
+outlier_threshold = df_final %>%
+  filter(!is.na(filings_2020)) %>%
+  pull(filings_2020) %>%
+  quantile(probs = 0.99, na.rm = TRUE)
+#filter 2020 April, may and June
+df_filtered = df_final %>%
+  filter(!year==2020)%>%
+  filter(!total_pop==0)%>%
+  filter(!is.na(median_rent.y))%>%
+  filter(filings_2020 <= outlier_threshold)
 
-df_final$evibypop=df_final$filings_avg/df_final$total_pop
 set.seed(123)
-n <- nrow(df_final)
+n <- nrow(df_filtered)
 
 # 70% training, 30% testing
 train_indices <- sample(1:n, size = 0.7 * n)
-train_data <- df_final[train_indices, ]
-test_data <- df_final[-train_indices, ]
+train_data <- df_filtered[train_indices, ]
+test_data <- df_filtered[-train_indices, ]
 ```
 
 ```{r}
-#run regression based on houses own characteristic
+#run regression based on census characteristic
 options(scipen = 999)
 
-model1=lm(evibypop~median_rent.y+foodcpi+electricitycpi+avg_wkly_wage+median_rent.y+pct_white+median_hh_income+pct_renter+unemployment_rate+median_year_built_renter+aggregate_rooms+pct_family+total_hh+pct_black+pct_asian+comcpi,data=df_final)
+model1=lm(evibypop~pct_white+median_hh_income+pct_renter+unemployment_rate+median_year_built_renter+aggregate_rooms+pct_family+total_hh+pct_black+pct_asian,data=df_filtered)
 summary(model1)
 
 ```
@@ -894,24 +950,67 @@ vif(model1)
 bptest(model1)
 ```
 
-```{r}
-test=df_census_sf%>%
-  filter(GEOID=="42101000101")%>%
-  select(filings_avg,week_date)
-```
-
-
 
 ```{r}
 #p-value is way too small, implying more variables may be needed (make sense)
 
 #calculate the RMSE
-model_train_1 <- lm(evibypop~median_rent.y+foodcpi+electricitycpi+avg_wkly_wage+median_rent.y+pct_white+median_hh_income+pct_renter+unemployment_rate+median_year_built_renter+aggregate_rooms+pct_family+total_hh+pct_black+pct_asian+comcpi,data = train_data)
+model_train_1 <- lm(filings_2020~pct_white+median_hh_income+pct_renter+unemployment_rate+median_year_built_renter+aggregate_rooms+pct_family+total_hh+pct_black+pct_asian+total_pop,data = train_data)
 test_predictions_1 <- predict(model_train_1, newdata = test_data)
-rmse_test_1 <- sqrt(mean((test_data$log_price - test_predictions_1)^2,na.rm = TRUE))
+rmse_test_1 <- sqrt(mean((test_data$filings_2020 - test_predictions_1)^2,na.rm = TRUE))
 rmse_train_1 <- summary(model_train_1)$sigma
 
 
 plot(model1)
+```
+
+
+
+
+```{r}
+model2=lm(filings_2020~median_rent.y+foodcpi+electricitycpi+avg_wkly_wage+median_rent.y+median_hh_income+pct_renter+unemployment_rate+median_year_built_renter+pct_family+pct_black+pct_asian+comcpi+total_pop,data=df_final)
+summary(model2)
+```
+
+```{r}
+vif(model2)
+```
+
+```{r}
+bptest(model2)
+```
+
+```{r}
+#calculate the RMSE
+model_train_2 <- lm(filings_2020~median_rent.y+foodcpi+electricitycpi+avg_wkly_wage+median_rent.y+median_hh_income+pct_renter+unemployment_rate+median_year_built_renter+pct_family+pct_black+comcpi+total_pop,data = train_data)
+test_predictions_2 <- predict(model_train_2, newdata = test_data)
+rmse_test_2 <- sqrt(mean((test_data$filings_2020 - test_predictions_2)^2,na.rm = TRUE))
+rmse_train_2 <- summary(model_train_2)$sigma
+
+
+plot(model2)
+```
+
+```{r}
+model3=lm(filings_2020~median_rent.y+avg_wkly_wage+median_rent.y+median_hh_income+pct_renter+unemployment_rate+median_year_built_renter+pct_family+pct_black+electricitycpi+total_pop+MHI_quantile,data=df_final)
+summary(model3)
+```
+
+```{r}
+vif(model3)
+```
+
+```{r}
+bptest(model3)
+```
+
+```{r}
+model_train_3 <- lm(filings_2020~median_rent.y+avg_wkly_wage+median_rent.y+median_hh_income+pct_renter+unemployment_rate+median_year_built_renter+pct_family+pct_black+electricitycpi+total_pop+MHI_quantile,data = train_data)
+test_predictions_3 <- predict(model_train_3, newdata = test_data)
+rmse_test_3 <- sqrt(mean((test_data$filings_2020 - test_predictions_3)^2,na.rm = TRUE))
+rmse_train_3 <- summary(model_train_3)$sigma
+
+
+plot(model3)
 ```
 
