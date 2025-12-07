@@ -720,6 +720,48 @@ annotate_figure(combined,
 
 There is no apparent monthly pattern across these four years.
 
+### Eviction Filings by Quarter Across Years
+
+```{r}
+
+# Aggregate by year and quarter
+quarterly_data <- df %>%
+  mutate(
+    year = year(first_of_month),
+    quarter = quarter(first_of_month)
+  ) %>%
+  filter(year %in% c(2020, 2021, 2022, 2023)) %>%
+  group_by(year, quarter) %>%
+  summarise(total_filings = sum(filings_2020, na.rm = TRUE), .groups = "drop")
+
+# Function to create plot for each quarter
+make_quarter_plot <- function(data, quarter_num) {
+  quarter_data <- data %>% filter(quarter == quarter_num)
+  
+  ggplot(quarter_data) +
+    geom_col(aes(x = factor(year), y = total_filings), 
+             fill = "darkseagreen3", color = "black", width = 0.7) +
+    labs(title = paste0("Q", quarter_num), x = NULL, y = NULL) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(face = "bold", hjust = 0.5, size = 14),
+      axis.text.x = element_text(size = 10),
+      axis.text.y = element_text(size = 10)
+    )
+}
+
+# Create 4 plots
+plot_list <- map(1:4, ~make_quarter_plot(quarterly_data, .x))
+
+# Arrange 2x2
+combined <- ggarrange(plotlist = plot_list, ncol = 2, nrow = 2, align = 'hv')
+
+annotate_figure(combined,
+                top = text_grob("Eviction Filings by Quarter (2020-2023)", 
+                                face = "bold", size = 16),
+                left = text_grob("Total Filings", rot = 90, size = 12))
+```
+
 ### Eviction Map on Census Tract level from 2020-2023
 
 ```{r}
@@ -871,10 +913,9 @@ The Far Northeast and South Philadelphia are the most distant from high-eviction
 
 ```{r}
 
-library(cowplot)
-
 # prepare data
 map_data <- df_final %>%
+  st_drop_geometry() %>%  # ADD THIS LINE
   group_by(GEOID) %>%
   summarise(
     total_filings = sum(filings_2020, na.rm = TRUE),
@@ -948,6 +989,7 @@ This map shows that high concentration of evictions with high unemployment occur
 ```{r}
 # prepare data
 map_data <- df_final %>%
+  st_drop_geometry() %>%  
   group_by(GEOID) %>%
   summarise(
     total_filings = sum(filings_2020, na.rm = TRUE),
@@ -1019,6 +1061,7 @@ This map shows that high eviction areas are predominantly concentrated in lower-
 ```{r}
 # prepare data
 map_data <- df_final %>%
+  st_drop_geometry() %>%  # ADD THIS LINE
   group_by(GEOID) %>%
   summarise(
     total_filings = sum(filings_2020, na.rm = TRUE),
