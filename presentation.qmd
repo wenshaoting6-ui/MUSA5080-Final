@@ -419,6 +419,10 @@ Court filings, Census demographics, BLS indicators
 
 ------------------------------------------------------------------------
 
+## {background-image="image asset/sample.png" background-size="90%" background-position="center" background-color="#ffffff"}
+
+------------------------------------------------------------------------
+
 ## {background-color="#ffffff"}
 
 <br><br>
@@ -432,3 +436,20 @@ Court filings, Census demographics, BLS indicators
 <br>
 
 [Tim Wen & Ye Zhang | MUSA 5080 | Fall 2025]{style="font-size: 0.9em; color: #64748b;"}
+
+------------------------------------------------------------------------
+
+
+## {background-color="#ffffff"}
+
+<br>
+
+![](image asset/logo.png){width="500"}
+
+<br><br>
+
+[TALENT SHOW! Sign up NOW!]{style="font-size: 3em; font-weight: bold; color: #f59e0b; letter-spacing: 5px;"}
+
+<br>
+
+[Your moment to shine ✨]{style="font-size: 1.5em; color: #64748b;"}
