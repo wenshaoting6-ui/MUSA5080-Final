@@ -9,7 +9,7 @@ format:
 ---
 
 ```{r}
-library(tidycensus)
+library(tidycensus) 
 library(tidyverse)
 library(here)
 library(lubridate)
