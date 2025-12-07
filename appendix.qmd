@@ -77,7 +77,7 @@ Below are all of the ACS Variables that we think are important and relevant to t
 
 ### census data collected
 
-```{r api key, eval=TRUE, include=FALSE}
+```{r api key, eval=FALSE, include=FALSE}
 
 census_api_key <- ("138db656646183a18ae51e4a7c1e1f5cd64d4b40")
 
@@ -252,6 +252,17 @@ philly_tract_data <- median_rent %>%
 philly_tract=tracts( state = 'PA',
         county = '101',
         year = 2023
+)
+
+philly_tract_sf=philly_tract%>%
+  select(GEOID,geometry)
+```
+```{r}
+philly_tract_data=read.csv("data/philly_tract_data.csv")
+
+philly_tract=tracts( state = 'PA',
+                     county = '101',
+                     year = 2023
 )
 
 philly_tract_sf=philly_tract%>%
