@@ -1209,7 +1209,7 @@ df_filtered <- df_filtered %>%
 # Select key variables and create a data frame with proper labels
 summary_vars <- df_filtered %>%
   st_drop_geometry() %>%
-  select(
+  dplyr::select(
     filings_2020, 
     unemployment_rate,
     unemployment_lag3,
