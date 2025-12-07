@@ -1127,9 +1127,21 @@ This map shows that most vulnerable tracts—high evictions combined with low ho
 **Major Finding:** Eviction filings stayed extremely low before September 2021 because Philadelphia’s local Emergency Housing Protection Act (March–August 2020), PHA’s internal eviction moratorium (March 2020–March 15, 2021), and the federal CDC eviction moratorium (September 2020–August 26, 2021) collectively prevented most cases from being filed. Once the CDC moratorium was struck down in late August 2021, these protections ended for the majority of renters. As a result, eviction filings began to rise again starting in fall 2021 and continued increasing into 2022.
 
 ## Regression
+We have four different regression models in total, with a very complicated process building and analyzing the models. Equation and table below display the logic of our model building process. 
+$$
+\text{Eviction} = \text{Census Characteristics} + \text{Temporal Characteristics} + \text{Spatial Characteristics}
+$$
+| Characteristic Type | Variables |
+|---------------------|-----------|
+| Census Characteristics | Income, race, pct renters,median rent (monthly), unit characteristics |
+| Temporal Characteristics | Year, season, policy indicators |
+| Spatial Characteristics | Neighborhood effects, spatial lag |
+| Control Variables | Population, housing density |
 
-### Calculate eviction rate per population and define outlier threshold
 
+As there is barely census level monthly data available, and the temporal range for ACS census is 5 years. We decide a number of  
+
+### Create more variables (more feature engineering) before running the regression
 ```{r}
 #calculate eviction by population
 df_final$evibypop=df_final$filings_2020/df_final$total_pop*100
@@ -1137,212 +1149,149 @@ outlier_threshold <- df_final %>%
   filter(!is.na(filings_2020)) %>%
   pull(filings_2020) %>%          
   quantile(probs = 0.99)
-#filter 2020 April, may and June
+#filter the top1% outlier, create log variable
 df_filtered = df_final %>%
   filter(!total_pop==0)%>%
   filter(!is.na(median_rent.y))%>%
   filter(filings_2020 <= outlier_threshold)%>%
-  mutate(mora = ifelse(ymd(week_date) > ymd("2020-02-01") & ymd(week_date) < ymd("2021-09-01"), 1, 0))
-#create eviction lag variable
-df_filtered <- df_filtered %>%
-  arrange(GEOID, week_date) %>%
-  group_by(GEOID) %>%
   mutate(
-    evictions_lag1 = lag(filings_2020, 1),
-    evictions_lag3 = lag(filings_2020, 3),
-    unemployment_lag1 = lag(unemployment_rate, 1),
-    rent_change = median_rent.y - lag(median_rent.y, 1)
+    log_pop = log(total_pop + 1),
+    log_rent = log(median_rent.y + 1))
+
+df_filtered <- df_filtered %>%
+  mutate(
+    # Rent-to-income ratio, as income level may highly correlated with rent level
+    rent_to_income = median_rent.y / (median_hh_income / 12),
+    rent_to_income = ifelse(is.infinite(rent_to_income) | rent_to_income > 2, NA, rent_to_income),
+    
+    # Temporal features
+    mora = ifelse(week_date >= as.Date("2020-03-01") & week_date <= as.Date("2021-08-31"), 1, 0), #mora refers to the federal eviction moratorium period
+    post_mora = ifelse(week_date >= as.Date("2021-09-01") & week_date <= as.Date("2022-03-31"), 1, 0),
+    winter = ifelse(month(week_date) %in% c(11,12, 1), 1, 0) #winter dummy variable
   ) %>%
+  # Lagged unemployment
+  group_by(GEOID) %>%
+  arrange(GEOID, week_date) %>%
+  mutate(unemployment_lag3 = lag(unemployment_rate, 3))%>% #based on our research, there is at least 45 days for renters to make up until the eviction happens, so we specifically use 3 month lag of unemployment for this effect
   ungroup()
-
-set.seed(123)
-n <- nrow(df_filtered)
-
-# 70% training, 30% testing
-train_indices <- sample(1:n, size = 0.7 * n)
-train_data <- df_filtered[train_indices, ]
-test_data <- df_filtered[-train_indices, ]
 ```
 
-### Model 1: Possion regression of eviction rate on demographic characteristics
-
+## Model 1: Possion regression of eviction rate on demographic characteristics
+As eviction is count data, we first use Poisson model.  
 ```{r}
 library(MASS)
+library(caret)
 #run regression based on census characteristic
 options(scipen = 999)
 
-model1=lm(evibypop~pct_white+median_hh_income+pct_renter+unemployment_rate+median_year_built_renter+aggregate_rooms+pct_family+total_hh+pct_black+pct_asian,data=df_filtered)
+model1=glm(filings_2020~pct_white+median_hh_income+pct_renter+unemployment_rate+median_year_built_renter+aggregate_rooms+pct_family+total_hh+pct_black+pct_asian,family = "poisson",data=df_filtered)
 summary(model1)
 
 ```
 
 ### Check multicollinearity using VIF
-
+the VIF for white population, total household and aggregate room is high, implying potential muti-colinearity
 ```{r}
 vif(model1)
 ```
 
 ### Breusch-Pagan test for heteroskedasticity
-
+p value is much smaller than 0.05, showing more variables are needed in the model
 ```{r}
 bptest(model1)
 ```
 
-### Model 1: Negative binomial regression with population offset and RMSE calculation
+### 10-fold cross validation for model 1
 
 ```{r}
-#p-value is way too small, implying more variables may be needed (make sense)
+train_control <- trainControl(method = "cv", number = 10)
 
-#calculate the RMSE
-model_train_1 <- glm.nb(
-  filings_2020 ~ pct_white + median_hh_income + pct_renter + unemployment_rate + 
+validation_model1 <- train(filings_2020 ~ pct_white + median_hh_income + pct_renter + unemployment_rate + 
   median_year_built_renter + aggregate_rooms + pct_family + total_hh + 
-  pct_black + pct_asian + offset(log(total_pop)), 
-  data = train_data
-)
+  pct_black + pct_asian + offset(log(total_pop)), data = df_filtered,
+               method = "glm",family=poisson,
+               trControl = train_control,
+  na.action = na.omit)
 
-# 3. PREDICT & EVALUATE
-# Use type = "response" to get actual eviction counts
+print(validation_model1)
 
-# Test RMSE
-test_predictions_1 <- predict(model_train_1, newdata = test_data, type = "response")
-rmse_test_1 <- sqrt(mean((test_data$filings_2020 - test_predictions_1)^2, na.rm = TRUE))
-
-# Train RMSE (replacing summary$sigma)
-train_predictions_1 <- predict(model_train_1, newdata = train_data, type = "response")
-rmse_train_1 <- sqrt(mean((train_data$filings_2020 - train_predictions_1)^2, na.rm = TRUE))
-
-# 4. OUTPUT
-print(paste("Train RMSE:", round(rmse_train_1, 2)))
-print(paste("Test RMSE:", round(rmse_test_1, 2)))
-
-plot(model1)
+```
+### Test for Dispersion 
+over dispersion exists in the data, we have to switch to negative binomial model instead
+```{r}
+library(AER)
+dispersiontest(model1)
 ```
 
-### Model 2: OLS regression adding economic indicators (rent, CPI, wages)
+
+## Model 2: Negative binomial regression using the same variables
 
 ```{r}
-model2=lm(filings_2020~median_rent.y+foodcpi+electricitycpi+avg_wkly_wage+median_rent.y+median_hh_income+pct_renter+unemployment_rate+median_year_built_renter+pct_family+pct_black+pct_asian+comcpi+total_pop,data=df_filtered)
+model2=glm.nb(filings_2020~pct_white+median_hh_income+pct_renter+unemployment_rate+median_year_built_renter+aggregate_rooms+pct_family+total_hh+pct_black+pct_asian, data=df_filtered)
 summary(model2)
 ```
 
-### Check multicollinearity for Model 2
+### 10-fold cross validation for model 2
 
 ```{r}
-vif(model2)
+train_control <- trainControl(method = "cv", number = 10)
+
+validation_model2 <- train(filings_2020 ~ pct_white + median_hh_income + pct_renter + unemployment_rate + 
+  median_year_built_renter + aggregate_rooms + pct_family + total_hh + 
+  pct_black + pct_asian + log_pop, data = df_filtered,
+               method = "glm.nb",
+               trControl = train_control,
+  na.action = na.omit,
+  tuneGrid = data.frame(link = "log"))
+
+print(validation_model2)
 ```
 
-### Breusch-Pagan test for heteroskedasticity in Model 2
+### Model 3: Negative binomial regression with all the cpi, EconKDE, unemployment rate, some period fixed effects and income quantiles
 
 ```{r}
-bptest(model2)
-```
-
-### Model 2: Negative binomial regression with economic indicators and RMSE calculation
-
-```{r}
-#calculate the RMSE
-model_train_2 <- glm.nb(
-  filings_2020 ~ median_rent.y + foodcpi + electricitycpi + avg_wkly_wage + 
-  median_hh_income + pct_renter + unemployment_rate + median_year_built_renter + 
-  pct_family + pct_black + comcpi + 
-  offset(log(total_pop)), 
-  data = train_data
-)
-
-
-# Test RMSE
-test_predictions_2 <- predict(model_train_2, newdata = test_data, type = "response")
-rmse_test_2 <- sqrt(mean((test_data$filings_2020 - test_predictions_2)^2, na.rm = TRUE))
-
-# Train RMSE (replacing summary$sigma)
-train_predictions_2 <- predict(model_train_2, newdata = train_data, type = "response")
-rmse_train_2 <- sqrt(mean((train_data$filings_2020 - train_predictions_2)^2, na.rm = TRUE))
-
-# 4. OUTPUT
-print(paste("Train RMSE:", round(rmse_train_2, 2)))
-print(paste("Test RMSE:", round(rmse_test_2, 2)))
-
-plot(model2)
-```
-
-### Model 3: OLS regression with income quantiles as categorical variable
-
-```{r}
-model3=lm(filings_2020~median_rent.y+avg_wkly_wage+median_rent.y+median_hh_income+pct_renter+unemployment_rate+median_year_built_renter+pct_family+pct_black+electricitycpi+total_pop+MHI_quantile,data=df_filtered)
+model3=glm.nb(filings_2020~median_rent.y + avg_wkly_wage + median_hh_income + 
+  pct_renter + unemployment_rate + median_year_built_renter + 
+  pct_family + pct_black + electricitycpi + factor(year) + 
+  MHI_quantile + log_pop+mora+EconKDE+I(EconKDE^2)+foodcpi+comcpi,data=df_filtered)
 summary(model3)
 ```
 
 ### Check multicollinearity for Model 3
-
+High VIF score across three cpis, implying muticolinearity
 ```{r}
 vif(model3)
 ```
 
 ### Breusch-Pagan test for heteroskedasticity in Model 3
-
+still need to add more variables
 ```{r}
 bptest(model3)
 ```
 
-### Model 3: Negative binomial regression with year fixed effects, income quantiles, and moratorium indicator
+### Model 3: 10-fold cross validation for model 3
 
 ```{r}
-# 1. Fit the model
-model_train_3 <- glm.nb(
-  filings_2020 ~ median_rent.y + avg_wkly_wage + median_hh_income + 
+train_control <- trainControl(method = "cv", number = 10)
+
+validation_model3 <- train(filings_2020~median_rent.y + avg_wkly_wage + median_hh_income + 
   pct_renter + unemployment_rate + median_year_built_renter + 
   pct_family + pct_black + electricitycpi + factor(year) + 
-  MHI_quantile + offset(log(total_pop))+mora+EconKDE+I(EconKDE^2), 
-  data = train_data
-)
+  MHI_quantile + log_pop+mora+EconKDE+I(EconKDE^2)+foodcpi+comcpi, data = df_filtered,
+               method = "glm.nb",
+               trControl = train_control,
+  na.action = na.omit,
+  tuneGrid = data.frame(link = "log"))
 
-# 2. Predict on TEST data 
-# NOTE: type = "response" is crucial to get 'counts' instead of 'log-odds'
-test_predictions_3 <- predict(model_train_3, newdata = test_data, type = "response")
-
-# 3. Calculate TEST RMSE
-rmse_test_3 <- sqrt(mean((test_data$filings_2020 - test_predictions_3)^2, na.rm = TRUE))
-
-# 4. Calculate TRAIN RMSE (Replacement for 'sigma')
-# We must predict on the training data manually to get an equivalent metric
-train_predictions_3 <- predict(model_train_3, newdata = train_data, type = "response")
-rmse_train_3 <- sqrt(mean((train_data$filings_2020 - train_predictions_3)^2, na.rm = TRUE))
-
-# Print results
-print(paste("Train RMSE:", round(rmse_train_3, 2)))
-print(paste("Test RMSE:", round(rmse_test_3, 2)))
-
-
-plot(model3)
+print(validation_model3)
 ```
 
-```{r}
-df_model4 <- df_filtered %>%
-  mutate(
-    # Rent-to-income ratio (replaces having both separately)
-    rent_to_income = median_rent.y / (median_hh_income / 12),
-    rent_to_income = ifelse(is.infinite(rent_to_income) | rent_to_income > 2, NA, rent_to_income),
-    
-    # Log transforms
-    log_pop = log(total_pop + 1),
-    log_rent = log(median_rent.y + 1),
-    
-    # Temporal features
-    mora = ifelse(week_date >= as.Date("2020-03-01") & week_date <= as.Date("2021-08-31"), 1, 0),
-    post_mora = ifelse(week_date >= as.Date("2021-09-01") & week_date <= as.Date("2022-03-31"), 1, 0),
-    winter = ifelse(month(week_date) %in% c(11,12, 1), 1, 0)
-  ) %>%
-  # Lagged unemployment
-  group_by(GEOID) %>%
-  arrange(GEOID, week_date) %>%
-  mutate(unemployment_lag1 = lag(unemployment_rate, 1)) %>%
-  mutate(unemployment_lag3 = lag(unemployment_rate, 3))%>%
-  ungroup() %>%
-  filter(!is.na(unemployment_lag1))
 
-# Step 3: Fit Model 4
-model_train_4 <- glm.nb(
+
+
+## Model 4 adding more period fixed effects with lag variables
+```{r}
+model4 <- glm.nb(
   filings_2020 ~ 
     unemployment_rate  +unemployment_lag3+ avg_wkly_wage + electricitycpi +
     log_rent + pct_renter + rent_to_income +
@@ -1350,71 +1299,30 @@ model_train_4 <- glm.nb(
     mora + post_mora + winter + factor(year) +
     MHI_quantile  +
     offset(log_pop)+EconKDE+pct_rent_burdened,
-  data = train_data4
+  data = df_filtered
 )
 
-summary(model_train_4)
-
-# Step 4: Evaluate
-test_predictions_4 <- predict(model_train_4, newdata = test_data4, type = "response")
-train_predictions_4 <- predict(model_train_4, newdata = train_data4, type = "response")
-
-rmse_test_4 <- sqrt(mean((test_data4$filings_2020 - test_predictions_4)^2, na.rm = TRUE))
-rmse_train_4 <- sqrt(mean((train_data4$filings_2020 - train_predictions_4)^2, na.rm = TRUE))
-
-print(paste("Train RMSE:", round(rmse_train_4, 2)))
-print(paste("Test RMSE:", round(rmse_test_4, 2)))
-
-
-# ===== RMSE =====
-rmse_test_4 <- sqrt(mean((test_data4$filings_2020 - test_predictions_4)^2, na.rm = TRUE))
-rmse_train_4 <- sqrt(mean((train_data4$filings_2020 - train_predictions_4)^2, na.rm = TRUE))
-
-# ===== MAE (Mean Absolute Error) =====
-mae_test_4 <- mean(abs(test_data4$filings_2020 - test_predictions_4), na.rm = TRUE)
-mae_train_4 <- mean(abs(train_data4$filings_2020 - train_predictions_4), na.rm = TRUE)
-
-# ===== R² (R-squared) =====
-# Test R²
-ss_res_test <- sum((test_data4$filings_2020 - test_predictions_4)^2, na.rm = TRUE)
-ss_tot_test <- sum((test_data4$filings_2020 - mean(test_data4$filings_2020, na.rm = TRUE))^2, na.rm = TRUE)
-r2_test_4 <- 1 - (ss_res_test / ss_tot_test)
-
-# Train R²
-ss_res_train <- sum((train_data4$filings_2020 - train_predictions_4)^2, na.rm = TRUE)
-ss_tot_train <- sum((train_data4$filings_2020 - mean(train_data4$filings_2020, na.rm = TRUE))^2, na.rm = TRUE)
-r2_train_4 <- 1 - (ss_res_train / ss_tot_train)
-
+summary(model4)
 ```
-
+### 10-fold cross validation for model 4
 ```{r}
-library(pscl)
+train_control <- trainControl(method = "cv", number = 10)
 
-# ===== McFadden's R² =====
+validation_model4 <- train(filings_2020 ~ 
+    unemployment_rate  +unemployment_lag3+ avg_wkly_wage + electricitycpi +
+    log_rent + pct_renter + rent_to_income +
+    pct_black + pct_family +
+    mora + post_mora + winter + factor(year) +
+    MHI_quantile+log_pop+EconKDE+pct_rent_burdened, data = df_filtered,
+               method = "glm.nb",
+               trControl = train_control,
+  na.action = na.omit,
+  tuneGrid = data.frame(link = "log"))
 
-# Method 1: Using pscl package (easiest)
-mcfadden_r2 <- pR2(model_train_4)["McFadden"]
-cat(sprintf("McFadden's R²: %.4f\n", mcfadden_r2))
-
-# Method 2: Manual calculation (more control)
-# Fit null model (intercept only with offset)
-null_model <- glm.nb(
-  filings_2020 ~ 1 + offset(log_pop), 
-  data = train_data4
-)
-
-# Calculate McFadden's R²
-logLik_full <- logLik(model_train_4)[1]
-logLik_null <- logLik(null_model)[1]
-mcfadden_r2_manual <- 1 - (logLik_full / logLik_null)
-
-cat(sprintf("\nMcFadden's R² (manual): %.4f\n", mcfadden_r2_manual))
-
-# Adjusted McFadden's R²
-k <- length(coef(model_train_4))  # number of parameters
-mcfadden_adj <- 1 - ((logLik_full - k) / logLik_null)
-cat(sprintf("Adjusted McFadden's R²: %.4f\n", mcfadden_adj))
+print(validation_model4)
 ```
+
+
 
 # THE IMPLEMENTATION
 
