@@ -41,6 +41,8 @@ library(spdep)
 library(ggpubr)
 library(ggplot2)
 library(cowplot)
+library(stargazer)
+library(knitr)
 ```
 ```{r}
 #load monthly eviction data
@@ -77,7 +79,7 @@ ACS Variables Collected:
 
 ```{r api key, eval=TRUE, include=FALSE}
 
-census_api_key <- ("138db656646183a18ae51e4a7c1e1f5cd64d4b40")
+census_api_key <- ("4a3cbd333d5407aa78ae4e581e634546cb6e540a")
 
 # Define parameters
 my_state  <- "Pennsylvania"
@@ -93,7 +95,7 @@ median_rent <- get_acs(
   year = acs_year,
   survey = "acs5"
 ) %>%
-  select(GEOID, median_rent = estimate)
+ dplyr:: select(GEOID, median_rent = estimate)
 
 # Race
 race <- get_acs(
@@ -1131,15 +1133,16 @@ We have four different regression models in total, with a very complicated proce
 $$
 \text{Eviction} = \text{Census Characteristics} + \text{Temporal Characteristics} + \text{Spatial Characteristics}
 $$
+
 | Characteristic Type | Variables |
 |---------------------|-----------|
-| Census Characteristics | Income, race, pct renters,median rent (monthly), unit characteristics |
-| Temporal Characteristics | Year, season, policy indicators |
-| Spatial Characteristics | Neighborhood effects, spatial lag |
-| Control Variables | Population, housing density |
+| Census Characteristics | Income, race, renters characteristics, median rent (monthly), unit characteristics |
+| Temporal Characteristics | Year, season, policy indicators, CPI, Unemployment rate, wages |
+| Spatial Characteristics | Neighborhood effects, EconKDE |
 
+As there is barely census level monthly data available, and the temporal range for ACS census is 5 years. We decide a number of temporal variables in a larger geography to account for the monthly change such as City level CPI and unemployment rate. We also add Year, season and policy indicators as 2020-2023 experiences the covid period, and the federal government has publish policy such as eviction moratorium that influences the eviction rate. We believe adding these indicators could better estimate and predict the future evictions.
 
-As there is barely census level monthly data available, and the temporal range for ACS census is 5 years. We decide a number of  
+Moreover, we also add some spatial features to account for the potential spatial autocorrelation. Both neighborhood effects and EconKDE could capture the eviction differences in High/low income neighborhood that makes our predictions accuracy better. 
 
 ### Create more variables (more feature engineering) before running the regression
 ```{r}
@@ -1175,6 +1178,57 @@ df_filtered <- df_filtered %>%
   mutate(unemployment_lag3 = lag(unemployment_rate, 3))%>% #based on our research, there is at least 45 days for renters to make up until the eviction happens, so we specifically use 3 month lag of unemployment for this effect
   ungroup()
 ```
+
+### Using stargazors for the summary statistics of our final dataframe
+```{r}
+# Select key variables and create a data frame with proper labels
+summary_vars <- df_filtered %>%
+  st_drop_geometry() %>%
+  select(
+    filings_2020, 
+    unemployment_rate,
+    unemployment_lag3,
+    avg_wkly_wage,
+    electricitycpi,
+    foodcpi,
+    comcpi,
+    median_rent.y,
+    pct_renter,
+    rent_to_income,
+    pct_black,
+    pct_family,
+    median_hh_income,
+    total_pop,
+    EconKDE,
+    pct_rent_burdened
+  )
+
+stargazer(
+  as.data.frame(summary_vars),
+  type = "text",
+  title = "Summary Statistics of Key Variables",
+  covariate.labels = c(
+    "Eviction Filings",
+    "Unemployment Rate (%)",
+    "Unemployment Rate (3-month lag) (%)",
+    "Average Weekly Wage ($)",
+    "Electricity CPI",
+    "Food CPI",
+    "Commodity CPI",
+    "Median Rent ($)",
+    "Percent Renter (%)",
+    "Rent-to-Income Ratio",
+    "Percent Black (%)",
+    "Percent Family Households (%)",
+    "Median Household Income ($)",
+    "Total Population",
+    "Economic Activity Density (KDE)",
+    "Percent Rent Burdened (%)"
+  ),
+  summary.stat = c("n", "mean", "sd", "min", "max")
+)
+```
+
 
 ## Model 1: Possion regression of eviction rate on demographic characteristics
 As eviction is count data, we first use Poisson model.  
@@ -1225,7 +1279,7 @@ dispersiontest(model1)
 
 
 ## Model 2: Negative binomial regression using the same variables
-
+As the assumption for poission model does not hold, we use negative binomial model instead
 ```{r}
 model2=glm.nb(filings_2020~pct_white+median_hh_income+pct_renter+unemployment_rate+median_year_built_renter+aggregate_rooms+pct_family+total_hh+pct_black+pct_asian, data=df_filtered)
 summary(model2)
@@ -1270,7 +1324,6 @@ bptest(model3)
 ```
 
 ### Model 3: 10-fold cross validation for model 3
-
 ```{r}
 train_control <- trainControl(method = "cv", number = 10)
 
@@ -1322,6 +1375,87 @@ validation_model4 <- train(filings_2020 ~
 print(validation_model4)
 ```
 
+### Output for model 4 
+```{r}
+#| label: tbl-model4-results
+#| tbl-cap: "Negative Binomial Regression Results (Model 4)"
+#| results: asis
+
+stargazer(
+  model4,
+  type = "text",
+  title = "Model 4",
+  covariate.labels = c(
+    "Unemployment Rate (%)",
+    "Unemployment Rate (3-month lag) (%)",
+    "Average Weekly Wage ($)",
+    "Electricity CPI",
+    "Log(Median Rent)",
+    "Percent Renter (%)",
+    "Rent-to-Income Ratio",
+    "Percent Black (%)",
+    "Percent Family Households (%)",
+    "Moratorium Period (2020-2021)",
+    "Post-Moratorium Period (2021-2022)",
+    "Winter Season",
+    "Year 2021",
+    "Year 2022",
+    "Year 2023",
+    "Neighborhood Income: Q2",
+    "Neighborhood Income: Q3",
+    "Neighborhood Income: Q4 (highest)",
+    "Economic Activity Density (KDE)",
+    "Percent Rent Burdened (%)"
+  ),
+  dep.var.labels = "Eviction Filings (Count)",
+  notes = "Offset variable: log(Total Population)",
+  notes.append = TRUE,
+  star.cutoffs = c(0.05, 0.01, 0.001),
+  digit.separator = ","
+)
+
+```
+
+### Validation comparision between four different models
+
+```{r}
+cv_results <- data.frame(
+  Model = c("Model 1: Poisson (Demographics Only)",
+            "Model 2: Negative Binomial (Demographics Only)",
+            "Model 3: Negative Binomial (+ Economic/Temporal Indicators)",
+            "Model 4: Negative Binomial (Full Model)"),
+  RMSE = c(
+    validation_model1$results$RMSE,
+    validation_model2$results$RMSE[validation_model2$results$link == "log"],
+    validation_model3$results$RMSE[validation_model3$results$link == "log"],
+    validation_model4$results$RMSE[validation_model4$results$link == "log"]
+  ),
+  Rsquared = c(
+    validation_model1$results$Rsquared,
+    validation_model2$results$Rsquared[validation_model2$results$link == "log"],
+    validation_model3$results$Rsquared[validation_model3$results$link == "log"],
+    validation_model4$results$Rsquared[validation_model4$results$link == "log"]
+  ),
+  MAE = c(
+    validation_model1$results$MAE,
+    validation_model2$results$MAE[validation_model2$results$link == "log"],
+    validation_model3$results$MAE[validation_model3$results$link == "log"],
+    validation_model4$results$MAE[validation_model4$results$link == "log"]
+  )
+)
+
+# Round to 3 decimal places
+cv_results$RMSE <- round(cv_results$RMSE, 3)
+cv_results$Rsquared <- round(cv_results$Rsquared, 3)
+cv_results$MAE <- round(cv_results$MAE, 3)
+
+kable(
+  cv_results,
+  col.names = c("Model", "RMSE", "R²", "MAE"),
+  align = c("l", "c", "c", "c"),
+  caption = "10-Fold Cross-Validation Performance Metrics"
+)
+```
 
 
 # THE IMPLEMENTATION
