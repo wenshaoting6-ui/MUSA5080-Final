@@ -39,7 +39,6 @@ library(spdep)
 library(ggpubr)
 library(ggplot2)
 library(cowplot)
-library(MASS)
 ```
 ```{r}
 df=read.csv(here("data/philadelphia_monthly_2020_2021.csv"))
@@ -1034,6 +1033,7 @@ test_data <- df_filtered[-train_indices, ]
 ### Model 1: OLS regression of eviction rate on demographic characteristics
 
 ```{r}
+library(MASS)
 #run regression based on census characteristic
 options(scipen = 999)
 
