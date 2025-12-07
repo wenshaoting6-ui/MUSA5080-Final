@@ -38,10 +38,6 @@ summary(df)
 
 
 ```{r}
-acs_tables <- load_variables(year = 2023, dataset = "acs5", cache = TRUE)
-```
-
-```{r}
 census_path <- here("data", "Philly Census")
 
 census_shp_path <- file.path(census_path, "philly_tract.shp")
@@ -414,11 +410,11 @@ neighborhood_path   <- file.path(neighborhood_folder, "philadelphia-neighborhood
 philly_neighborhoods <- st_read(neighborhood_path, quiet = TRUE)
 
 philly_neighborhoods=st_transform(philly_neighborhoods, crs=32618)
-df_census_sf=st_join(df_census_sf,philly_neighborhoods)
+
 census_points=st_centroid(df_census_sf)
 
 points_joined <- st_join(census_points, philly_neighborhoods)
-
+df_census_sf=st_join(df_census_sf,philly_neighborhoods)
 # Calculate mean MHI for each polygon
 mean_mhi_by_poly <- points_joined %>%
   st_drop_geometry() %>%             
@@ -451,8 +447,10 @@ df_census_sf_final$MHI_quantile <- cut(
 #calculate rent by month and tract
 rent_by_month_tract=phillyrental_proj_1923%>%
   st_drop_geometry()%>%
-  mutate(date=format(DATE_POSTED,"%Y-%m"))%>%
-  select(GEOID,RENT_PRICE,date,NEIGHBORHOOD)%>%
+  mutate(date=format(DATE_POSTED,"%Y-%m"))
+
+rent_by_month_tract=rent_by_month_tract%>%
+  dplyr::select(GEOID,RENT_PRICE,date)%>%
   group_by(GEOID,date)%>%
     summarise(median_rent=median(RENT_PRICE))
 ```
@@ -466,7 +464,7 @@ df_final=df_census_sf_final%>%
   mutate(date=format(week_date,"%Y-%m"))%>%
   filter(year(week_date) %in% c(2020:2023))%>%
   left_join(rent_by_month_tract,by=c("date","GEOID"))%>%
-  select(GEOID,unemployment_rate,foodcpi,electricitycpi,avg_wkly_wage,
+  dplyr::select(GEOID,unemployment_rate,foodcpi,electricitycpi,avg_wkly_wage,
          filings_2020,comcpi,total_pop,pct_white,pct_black,pct_asian,
          median_hh_income,pct_renter,median_year_built_renter,aggregate_rooms,
          median_rooms,total_hh,pct_family,median_rent.y,MHI_quantile,week_date,year)
@@ -986,7 +984,7 @@ plot(model1)
 
 
 ```{r}
-model2=lm(filings_2020~median_rent.y+foodcpi+electricitycpi+avg_wkly_wage+median_rent.y+median_hh_income+pct_renter+unemployment_rate+median_year_built_renter+pct_family+pct_black+pct_asian+comcpi+total_pop,data=df_final)
+model2=lm(filings_2020~median_rent.y+foodcpi+electricitycpi+avg_wkly_wage+median_rent.y+median_hh_income+pct_renter+unemployment_rate+median_year_built_renter+pct_family+pct_black+pct_asian+comcpi+total_pop,data=df_filtered)
 summary(model2)
 ```
 
@@ -1025,7 +1023,7 @@ plot(model2)
 ```
 
 ```{r}
-model3=lm(filings_2020~median_rent.y+avg_wkly_wage+median_rent.y+median_hh_income+pct_renter+unemployment_rate+median_year_built_renter+pct_family+pct_black+electricitycpi+total_pop+MHI_quantile,data=df_final)
+model3=lm(filings_2020~median_rent.y+avg_wkly_wage+median_rent.y+median_hh_income+pct_renter+unemployment_rate+median_year_built_renter+pct_family+pct_black+electricitycpi+total_pop+MHI_quantile,data=df_filtered)
 summary(model3)
 ```
 
