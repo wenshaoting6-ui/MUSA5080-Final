@@ -18,9 +18,11 @@ Our model is trying to look at various predictors that may contribute to the iss
 
 Some of the tangible actions that we wish to see include emergency rental assistance funds before the actual evictions occur and identifying neighborhoods for proactive tenant outreach programs to prevent eviction from happening in the first place.
 
+# Data Processing
 ### Load Library
 
 ```{r}
+#load packages
 library(tidycensus) 
 library(tidyverse)
 library(here)
@@ -41,6 +43,7 @@ library(ggplot2)
 library(cowplot)
 ```
 ```{r}
+#load monthly eviction data
 df=read.csv(here("data/philadelphia_monthly_2020_2021.csv"))
 df$week_date <- my(df$month)
 df$first_of_month=floor_date(df$week_date,"month")
@@ -255,7 +258,7 @@ philly_tract_sf=philly_tract%>%
 
 
 ### Dewey rental data
-
+As the median gross rent in ACS 5-year census data fails to capture the temporal monthly changes, we use Dewey rental data to compensate it. Dewey rentalhub web-scraped rental data from over 100+ sources. It has both specific locations, rental prices and date posted, making it possible for us to filter it to Philadelphia and then calculate the median gross rent by census tract per month to see how the changes in rent influence the eviction rate monthly. 
 ```{r}
 #input data
 folder_path <- "data/rental-in-philly"
@@ -287,26 +290,17 @@ phillyrental_proj_1923=phillyrental_proj%>%
   year(DATE_POSTED) %in% c(2019:2023)
 )
 
-phillyrental_proj_1619=phillyrental_proj%>%
-  filter(
-  year(DATE_POSTED) %in% c(2016:2019)
-)
-
 philly_tract_sf=st_transform(philly_tract_sf,crs=32618)
 
 #merge with census tract
 phillyrental_proj_1923=phillyrental_proj_1923%>%
   st_join(philly_tract_sf,join = st_within)
-
-phillyrental_proj_1619=phillyrental_proj_1619%>%
-  st_join(philly_tract_sf,join = st_within)
-
-
 ```
 
 
 ### Load quartly wage data
-```{r}
+Moreover, we also consider if the change on the wage would influence the eviction rate. However, there is no tract level wage data per month. Instead, we use Philadelphia wage data by quarter, which means we have to assume wage level on different census tract is the same. 
+```{r, include=FALSE}
 file_list <- list.files(
   path = "data",
   pattern = ".q1-q4 42101 Philadelphia County, Pennsylvania.csv",
@@ -332,6 +326,9 @@ df=wage_data%>%
 ```
 
 ### Merge with different CPI and unemployment rate per month in Philadelphia
+We also consider other potential living cost that would make people difficult to afford the rent, such as food and electricity, especially after the pandemic food and electricity is getting much more expensive. We use CPI to account for the potential price level increase for these living cost that may influence the eviction rate. What's more, unemployment rate is also included, as more people may not afford the rent when unemployment rate increases. 
+
+Similar to wage data, none of them have monthly data on the census tract level, so we use Philadelphia as the geography and assume the whole geography is homogenous instead. 
 ```{r}
 food=read.csv(here('data/food.csv'))
 electricity=read.csv(here('data/electricity.csv'))
@@ -365,8 +362,8 @@ commodities = commodities %>%
   mutate(
     comcpi = Value, 
     half_year_date = case_when(
-      Period == "S01" ~ ymd(paste(Year, "01", "01")), # Half 1 -> Jan 1
-      Period == "S02" ~ ymd(paste(Year, "07", "01"))  # Half 2 -> Jul 1
+      Period == "S01" ~ ymd(paste(Year, "01", "01")), 
+      Period == "S02" ~ ymd(paste(Year, "07", "01"))  
     )
   ) %>%
   dplyr::select(half_year_date, comcpi)
@@ -401,6 +398,7 @@ df_census_sf=philly_tract_sf%>%
 ```
 
 ### Merge with neighborhood data
+Reading in Philadelphia Neighborhoods as a shp object. This will allow us to aggregate data on neighborhoods to identify neighborhood fixed effect.
 ```{r}
 neighborhood_folder <- here("data", "philadelphia-neighborhoods")
 neighborhood_path   <- file.path(neighborhood_folder, "philadelphia-neighborhoods.shp")
@@ -456,7 +454,6 @@ rent_by_month_tract=rent_by_month_tract%>%
 ```
 
 ### Commercial and office points of interests (Amenities)(alternative in the next section if you do not want to download pbf data)
-
 ```{r, eval=FALSE}
 # downloading osm data from geofabrik:https://download.geofabrik.de/north-america/us-northeast.html
 
@@ -503,6 +500,9 @@ poi=st_read(poi_shp_path)
 ```
 
 ### Kernel Density Rasters (Economic activities density)
+Instead of using distance to CBD, we extracted commercial and office points of interests from OpenStreetMap (OSM), and we operate a Kernel Density Estimation (KDE) with a bandwidth of 300 meters. By doing that, we manage to get a surface of density of economic activities across the whole city. The higher the KDE value is, the more economic activities it will be, implying a higher likelihood of the area as a city centers.
+
+There are several benefits using this approach compared to distance to CBD. First, with the development of sub urbanization, even within the context of Philadelphia County, there is still a shift from monocentric model to polycentric model, meaning there multiple centers/sub centers. Using one CBD fail to capture these sub centers, which may also influence housing price. Second, CBD is an area rather than a point, distance method fail to capture this while the continuous surface computed by KDE would have a value of economic activities across the whole city.
 ```{r}
 # get boundary of Philadelphia County
 pa_counties <- counties(state = "PA", year = 2023)
@@ -533,7 +533,6 @@ r_Economic <- mask(r_Economic, vect(philly_boundary))
 
 
 ### Final data frame
-
 ```{r}
 library(raster)
 #merge with eviction data
@@ -556,11 +555,6 @@ df_final=df_census_sf_final%>%
 ```
 
 # EXPLORATORY DATA ANALYSIS
-
-```{r}
-colnames(df_final)
-```
-
 ### Distribution of eviction counts
 
 ```{r}
@@ -1149,7 +1143,7 @@ df_filtered = df_final %>%
   filter(!is.na(median_rent.y))%>%
   filter(filings_2020 <= outlier_threshold)%>%
   mutate(mora = ifelse(ymd(week_date) > ymd("2020-02-01") & ymd(week_date) < ymd("2021-09-01"), 1, 0))
-
+#create eviction lag variable
 df_filtered <- df_filtered %>%
   arrange(GEOID, week_date) %>%
   group_by(GEOID) %>%
@@ -1170,7 +1164,7 @@ train_data <- df_filtered[train_indices, ]
 test_data <- df_filtered[-train_indices, ]
 ```
 
-### Model 1: OLS regression of eviction rate on demographic characteristics
+### Model 1: Possion regression of eviction rate on demographic characteristics
 
 ```{r}
 library(MASS)
@@ -1324,7 +1318,6 @@ plot(model3)
 ```
 
 ```{r}
-# Step 1: Feature Engineering
 df_model4 <- df_filtered %>%
   mutate(
     # Rent-to-income ratio (replaces having both separately)
@@ -1347,13 +1340,6 @@ df_model4 <- df_filtered %>%
   mutate(unemployment_lag3 = lag(unemployment_rate, 3))%>%
   ungroup() %>%
   filter(!is.na(unemployment_lag1))
-
-# Step 2: Spatial train/test split (by tract)
-set.seed(123)
-unique_tracts <- unique(df_model4$GEOID)
-train_tracts <- sample(unique_tracts, size = 0.7 * length(unique_tracts))
-train_data4 <- df_model4 %>% filter(GEOID %in% train_tracts)
-test_data4 <- df_model4 %>% filter(!GEOID %in% train_tracts)
 
 # Step 3: Fit Model 4
 model_train_4 <- glm.nb(
@@ -1399,32 +1385,6 @@ ss_res_train <- sum((train_data4$filings_2020 - train_predictions_4)^2, na.rm = 
 ss_tot_train <- sum((train_data4$filings_2020 - mean(train_data4$filings_2020, na.rm = TRUE))^2, na.rm = TRUE)
 r2_train_4 <- 1 - (ss_res_train / ss_tot_train)
 
-# ===== Print Results =====
-cat("\n=== Model 4 Performance Metrics ===\n\n")
-
-cat("TRAINING SET:\n")
-cat(sprintf("  RMSE: %.2f\n", rmse_train_4))
-cat(sprintf("  MAE:  %.2f\n", mae_train_4))
-cat(sprintf("  R²:   %.4f\n\n", r2_train_4))
-
-cat("TEST SET:\n")
-cat(sprintf("  RMSE: %.2f\n", rmse_test_4))
-cat(sprintf("  MAE:  %.2f\n", mae_test_4))
-cat(sprintf("  R²:   %.4f\n\n", r2_test_4))
-
-# ===== Create comparison dataframe =====
-metrics_df <- data.frame(
-  Metric = c("RMSE", "MAE", "R²"),
-  Train = c(rmse_train_4, mae_train_4, r2_train_4),
-  Test = c(rmse_test_4, mae_test_4, r2_test_4),
-  Difference = c(
-    rmse_test_4 - rmse_train_4,
-    mae_test_4 - mae_train_4,
-    r2_train_4 - r2_test_4  # Note: for R², we want train - test
-  )
-)
-
-print(metrics_df)
 ```
 
 ```{r}
