@@ -1,7 +1,7 @@
 ---
 format:
   revealjs:
-    theme: dark
+    theme: default
     transition: fade
     transition-speed: fast
     slide-number: c/t
@@ -17,229 +17,393 @@ execute:
   warning: false
   message: false
 ---
-
 ```{r setup}
 #| include: false
 library(tidyverse)
 library(ggplot2)
+library(here)
 
-theme_dark_minimal <- function() {
+theme_light_minimal <- function() {
   theme_minimal(base_size = 16) +
     theme(
-      plot.background = element_rect(fill = "#191919", color = NA),
-      panel.background = element_rect(fill = "#191919", color = NA),
-      panel.grid.major = element_line(color = "#333333"),
+      plot.background = element_rect(fill = "#ffffff", color = NA),
+      panel.background = element_rect(fill = "#ffffff", color = NA),
+      panel.grid.major = element_line(color = "#e2e8f0"),
       panel.grid.minor = element_blank(),
-      axis.text = element_text(color = "#94a3b8"),
-      axis.title = element_text(color = "#cbd5e1"),
-      legend.background = element_rect(fill = "#191919"),
-      legend.text = element_text(color = "#cbd5e1"),
+      axis.text = element_text(color = "#475569"),
+      axis.title = element_text(color = "#1e293b"),
+      legend.background = element_rect(fill = "#ffffff"),
+      legend.text = element_text(color = "#1e293b"),
       legend.position = "bottom"
     )
 }
 ```
 
-##  {background-color="#0f172a"}
+##  {background-color="#ffffff"}
 
 <br>
 
-[MUSA 5080 \| Final Project]{style="font-size: 0.5em; color: #64748b; letter-spacing: 3px;"}
+[MUSA 5080 | Final Project]{style="font-size: 0.5em; color: #64748b; letter-spacing: 3px;"}
 
 <br>
 
-[Predicting Eviction Risk]{style="font-size: 2.5em; font-weight: bold; color: #f472b6;"}
+[Predicting Eviction Risk]{style="font-size: 2.5em; font-weight: bold; color: #be185d;"}
 
-[A Spatial-Temporal Model for Philadelphia]{style="font-size: 1.1em; color: #94a3b8;"}
+[A Prediction Model for Philadelphia]{style="font-size: 1.1em; color: #475569;"}
 
 <br><br>
 
-[**Ye & Tim** \| December 2025]{style="font-size: 0.9em; color: #64748b;"}
+[**Tim Wen & Ye Zhang** | December 2025]{style="font-size: 0.9em; color: #64748b;"}
 
 ------------------------------------------------------------------------
 
-## The Problem {background-color="#0f172a"}
+## THE PROBLEM {background-color="#ffffff"}
+
+::: columns
+::: {.column width="50%"}
+[**Why Eviction Prediction Matters**]{style="color: #1d4ed8;"}
+
+- **13,499** eviction filings over past 12 months 
+- Leads to homelessness & health consequences
+- Current response is **reactive** — too late
+
+[**Who is Affected?**]{style="color: #1d4ed8;"}
+
+- Low-income renters
+- Rent-burdened households (30%+ on rent)
+- Predominantly Black neighborhoods
+:::
+
+::: {.column width="50%"}
+[**The Decision We Inform**]{style="color: #1d4ed8;"}
+
+- Where to deploy emergency rental assistance
+- Which tracts need tenant outreach
+- How to allocate limited city resources
 
 <br>
+
+[**Goal:** Shift from reactive to **proactive** intervention]{style="color: #be185d; font-weight: bold;"}
+:::
+:::
+
+------------------------------------------------------------------------
+
+## THE SOLUTION {background-color="#ffffff"}
+
+::: columns
+::: {.column width="50%"}
+[**What We're Predicting**]{style="color: #1d4ed8;"}
+
+- Monthly eviction filing counts by census tract
+
+[**How Prediction Helps**]{style="color: #1d4ed8;"}
+
+- Identify high-risk tracts **before** spikes occur
+- Enable proactive deployment of resources
+- Target outreach to **prevent** evictions
+:::
+
+::: {.column width="50%"}
+[**Better Than Current Practice**]{style="color: #1d4ed8;"}
+
+| Current Approach | Our Model |
+|:-----------------|:----------|
+| Wait for filings → React | Predict risk → Intervene early |
+| Resources spread thin | Targeted allocation |
+| Help comes too late | Prevention-focused |
+
+[**Goal:** Early intervention prevents displacement]{style="color: #be185d; font-weight: bold;"}
+:::
+:::
+
+------------------------------------------------------------------------
+
+## Data Sources & Integration {background-color="#ffffff"}
+
+::: columns
+::: {.column width="50%"}
+[**Primary Data**]{style="color: #1d4ed8;"}
+
+- **Eviction Lab** (2020–2023): Filing counts
+- **ACS Census**: Demographics, housing, income
+- **BLS**: Unemployment, wages, CPI
+
+[**Spatial Features**]{style="color: #1d4ed8;"}
+
+- Economic activity density (KDE)
+- Distance to eviction hot spots
+:::
+
+::: {.column width="50%"}
+[**Panel Structure**]{style="color: #1d4ed8;"}
+
+- **Unit**: Census tract × month
+- **Observations**: ~45,000 tract-months
+- **Validation**: 70/30 train-test split
+
+[**Key Variables**]{style="color: #1d4ed8;"}
+
+- Demographics: % Black, % renter
+- Economic: Median income, wages
+- Housing: Rent, building age
+- Temporal: Year FE, moratorium
+:::
+:::
+
+------------------------------------------------------------------------
+
+## Exploratory Analysis: Temporal Patterns {background-color="#ffffff"}
 
 ::: columns
 ::: {.column width="55%"}
-**Policy Challenge**
-
-Eviction leads to housing instability, homelessness, and long-term negative health outcomes. It is a **cyclical event** — the more evictions in a neighborhood, the higher the chance it continues.
-
-<br>
-
-**Who is Affected?**
-
--   Low-income renters
--   Rent-burdened households (paying 30%+ on rent)
--   Areas with high unemployment
-
-<br>
-
-**Current Problem:** City response is **reactive** — interventions come after evictions are filed, often too late.
+![](image asset/unnamed-chunk-18-1.png){height="450"}
 :::
 
 ::: {.column width="45%"}
-![](img/eviction_vs_income.png){height="450"}
+[**Key Finding: Moratorium Effect**]{style="color: #1d4ed8;"}
 
-[Orange = High evictions + Low income]{style="font-size: 0.8em; color: #94a3b8;"}
+- Filings near **zero** from Mar 2020 – Aug 2021
+- CDC + local protections worked
+
+[**Post-Moratorium Surge**]{style="color: #1d4ed8;"}
+
+- Filings surged past pre-pandemic levels
+- Backlog effect visible
+
+[**Takeaway:** Prevention policies work]{style="color: #be185d; font-weight: bold;"}
 :::
 :::
 
 ------------------------------------------------------------------------
 
-## The Solution {background-color="#0f172a"}
+## Exploratory Analysis: Temporal Patterns {background-color="#ffffff"}
 
-<br>
+::: columns
+::: {.column width="33%"}
+![](image asset/unnamed-chunk-20-1.png){height="320"}
 
-**What We're Predicting:** Monthly eviction filing counts by census tract
+[By Month]{style="font-size: 0.7em; color: #64748b;"}
+:::
 
-<br>
+::: {.column width="33%"}
+![](image asset/unnamed-chunk-21-1.png){height="320"}
 
-**How Prediction Helps:**
+[By Quarter]{style="font-size: 0.7em; color: #64748b;"}
+:::
 
--   Identify **high-risk tracts before spikes occur**
--   Enable **proactive deployment** of emergency rental assistance
--   Target tenant outreach programs to **prevent evictions** rather than respond to them
+::: {.column width="33%"}
+![](image asset/unnamed-chunk-19-1.png){height="320"}
 
-<br>
-
-**Better Than Current Practice:**
-
--   Current: Wait for filings → React
--   Our model: Predict risk → Intervene early → Prevent displacement
+[By Year]{style="font-size: 0.7em; color: #64748b;"}
+:::
+:::
 
 ------------------------------------------------------------------------
 
-## The Evidence: Exploratory Analysis {background-color="#0f172a"}
+## Exploratory Analysis: Spatial Patterns {background-color="#ffffff"}
 
 ::: columns
 ::: {.column width="50%"}
-![](img/monthly_eviction.png){height="420"}
+![](image asset/unnamed-chunk-24-1.png){height="420"}
+
+[Distance to Eviction Hot Spots]{style="font-size: 0.8em; color: #64748b;"}
 :::
 
 ::: {.column width="50%"}
-**Major Finding: Moratorium Effect**
+![](image asset/unnamed-chunk-23-1.png){height="420"}
 
-Eviction filings stayed near **zero from March 2020 – August 2021** due to:
-
--   Philadelphia Emergency Housing Protection Act
--   PHA internal moratorium
--   Federal CDC moratorium
-
-<br>
-
-Once protections ended (late August 2021), filings **surged past pre-pandemic levels**.
-
-<br>
-
-[**Takeaway:** Prevention policies work — this motivates our predictive approach]{style="color: #f472b6;"}
+[Hot Spots & Cold Spots (Local Moran's I)]{style="font-size: 0.8em; color: #64748b;"}
 :::
 :::
 
 ------------------------------------------------------------------------
 
-## The Evidence: Model Approach {background-color="#0f172a"}
+## Exploratory Analysis: Key Relationships {background-color="#ffffff"}
 
-<br>
+::: columns
+::: {.column width="33%"}
+![](image asset/unnamed-chunk-25-1.png){height="320"}
 
-**Model: Negative Binomial Regression**
+[vs. Unemployment]{style="font-size: 0.7em; color: #64748b;"}
+:::
 
--   Appropriate for overdispersed count data
--   Population offset → predicting eviction **rate**, not raw counts
--   70/30 train-test split validation
+::: {.column width="33%"}
+![](image asset/unnamed-chunk-26-1.png){height="320"}
 
-<br>
+[vs. Median Rent]{style="font-size: 0.7em; color: #64748b;"}
+:::
 
-**Predictors:**
+::: {.column width="33%"}
+![](image asset/unnamed-chunk-27-1.png){height="320"}
 
-| Category | Variables |
-|:---------|:----------|
-| Demographics | % Black, % renter, % family households |
-| Economics | Median household income, unemployment rate, weekly wages |
-| Housing Costs | Median rent, electricity CPI, food CPI |
-| Temporal | Year fixed effects, moratorium indicator, income quantiles |
+[vs. Household Income]{style="font-size: 0.7em; color: #64748b;"}
+:::
+:::
 
-------------------------------------------------------------------------
-
-## The Evidence: Model Performance {background-color="#0f172a"}
-
-<br>
-
-| Model | Description | Train RMSE | Test RMSE |
-|:------|:------------|:-----------|:----------|
-| Model 1 | Demographics only | 5.89 | 5.82 |
-| Model 2 | + Economic indicators | 5.82 | 5.76 |
-| **Model 3** | + Year FE, moratorium, income quantiles | **5.76** | **5.69** |
-
-<br>
-
-**Limitations:**
-
--   Only captures **formal filings** — misses informal displacement
--   Census data has **1–2 year lag**
--   Spatial autocorrelation present (Breusch-Pagan test significant)
-
-<br>
-
-**Bias Concerns:** Model may reinforce existing patterns — high-risk labels could stigmatize already-marginalized neighborhoods
+[Purple = High evictions + High risk factor | Concentration in North & West Philly]{style="font-size: 0.85em; color: #64748b;"}
 
 ------------------------------------------------------------------------
 
-## The Implementation {background-color="#0f172a"}
-
-<br>
+## Model Approach {background-color="#ffffff"}
 
 ::: columns
 ::: {.column width="50%"}
-**Monthly Risk Score Dashboard**
+[**Why Negative Binomial Regression?**]{style="color: #1d4ed8;"}
 
-| Risk Tier | Action |
-|:----------|:-------|
-| 🔴 High | Deploy emergency rental assistance |
-| 🟡 Medium | Proactive tenant outreach |
-| 🟢 Low | Monitor & community education |
-
-<br>
-
-**Data Needed:**
-
--   Eviction filings (already available from courts)
--   Census demographics (ACS, updated annually)
--   Economic indicators (BLS, monthly)
+- Count data (0, 1, 2, ... filings per tract)
+- High overdispersion (variance >> mean)
+- Population offset → predicting **rate**, not raw counts
 :::
 
 ::: {.column width="50%"}
-**Benefits:**
+[**Model Progression**]{style="color: #1d4ed8;"}
 
--   Early intervention before displacement
--   Efficient resource allocation
--   Court coordination for high-risk cases
-
-<br>
-
-**Safeguards:**
-
--   Human review of all allocation decisions
--   Regular audits for disparate impact
--   Tenant access to their own risk info
--   Transparent methodology
+| Model | Description |
+|:------|:------------|
+| 1 | Demographics only (% Black, % renter) |
+| 2 | + Economic indicators (rent, CPI, wages) |
+| 3 | + Year FE, moratorium, income quantiles |
+| **4** | + Temporal lags, seasonality, spatial CV |
 :::
 :::
 
 ------------------------------------------------------------------------
 
-##  {background-color="#0f172a"}
+## Model Performance {background-color="#ffffff"}
+
+::: columns
+::: {.column width="50%"}
+[**Validation Results (70/30 Split)**]{style="color: #1d4ed8;"}
+
+| Model | Train RMSE | Test RMSE |
+|:------|:-----------|:----------|
+| 1 (Demographics) | 2.42 | 2.40 |
+| 2 (+ Economics) | 2.41 | 2.39 |
+| 3 (+ Year FE) | 2.34 | 2.32 |
+| **4 (Full)** | **2.34** | **2.24** |
+:::
+
+::: {.column width="50%"}
+[**Key Predictors (Model 4)**]{style="color: #1d4ed8;"}
+
+- **% Renter households** — strongest predictor
+- **% Black population** — demographic risk factor
+- **Unemployment rate** — economic stress
+- **Moratorium indicators** — policy effects captured
+- **Economic density (KDE)** — spatial economic activity
+:::
+:::
+
+
+------------------------------------------------------------------------
+
+## Model Performance: Error Analysis {background-color="#ffffff"}
+
+::: columns
+::: {.column width="55%"}
+![](image asset/YOUR_ERROR_MAP_FILENAME.png){height="550"}
+
+[]{style="font-size: 0.9em; color: #64748b;"}
+:::
+
+::: {.column width="45%"}
+[**Where Does the Model Struggle?**]{style="color: #1d4ed8;"}
+
+-  
+-  
+
+[**Why These Patterns?**]{style="color: #1d4ed8;"}
+
+- 
+- 
+
+:::
+:::
+
+------------------------------------------------------------------------
+
+## Limitations & Bias {background-color="#ffffff"}
+
+::: columns
+::: {.column width="50%"}
+[**Technical Limitations**]{style="color: #1d4ed8;"}
+
+- Only captures **formal filings**
+- Misses informal displacement
+- Census data has 1–2 year lag
+- Heteroskedasticity present
+
+[**Data Gaps**]{style="color: #1d4ed8;"}
+
+- No informal eviction data
+- Limited COVID-era filings
+- Cannot capture threats/harassment
+:::
+
+::: {.column width="50%"}
+[**Bias Concerns**]{style="color: #1d4ed8;"}
+
+- Model may **reinforce** existing patterns
+- High-risk labels could stigmatize neighborhoods
+- % Black as predictor reflects systemic racism
+
+[**Who Could Be Harmed?**]{style="color: #1d4ed8;"}
+
+- Over-policed if misused by landlords
+- Stigma → reduced investment
+- Self-fulfilling prophecy risk
+:::
+:::
+
+------------------------------------------------------------------------
+
+## Implementation Recommendation {background-color="#ffffff"}
+
+::: columns
+::: {.column width="50%"}
+[**Monthly Risk Dashboard**]{style="color: #1d4ed8;"}
+
+| Tier | Action |
+|:-----|:-------|
+| High | Emergency rental assistance |
+| Medium | Tenant outreach |
+| Low | Monitor |
+
+[**Data Requirements**]{style="color: #1d4ed8;"}
+
+- Court filing data (already public)
+- Census updates (annual)
+- BLS indicators (monthly)
+:::
+
+::: {.column width="50%"}
+[**Required Safeguards**]{style="color: #1d4ed8;"}
+
+- Human review of allocation decisions
+- Regular audits for disparate impact
+- Transparent methodology
+
+[**Key Benefits**]{style="color: #1d4ed8;"}
+
+- Early intervention before displacement
+- Efficient resource allocation
+- Data-driven decision making
+:::
+:::
+
+------------------------------------------------------------------------
+
+##  {background-color="#ffffff"}
 
 <br><br>
 
-[Thank You]{style="font-size: 2.5em; font-weight: bold; color: #f472b6;"}
+[Thank You]{style="font-size: 2.5em; font-weight: bold; color: #be185d;"}
 
 <br>
 
-**Questions?**
+[**Questions?**]{style="color: #1e293b;"}
 
 <br>
 
-Ye & Tim \| MUSA 5080 \| December 2025
+[Tim & Ye | MUSA 5080 | December 2025]{style="font-size: 0.9em; color: #64748b;"}
