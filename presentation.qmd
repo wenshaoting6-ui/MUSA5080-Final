@@ -192,32 +192,6 @@ theme_light_minimal <- function() {
 
 ------------------------------------------------------------------------
 
-## Exploratory Analysis: Temporal Patterns {background-color="#ffffff"}
-
-::: columns
-::: {.column width="33%"}
-![](image asset/unnamed-chunk-20-1.png){width="100%"}
-
-[By Month Across Years]{style="font-size: 0.7em; color: #64748b;"}
-:::
-
-::: {.column width="33%"}
-![](image asset/unnamed-chunk-21-1.png){width="100%"}
-
-[By Quarter]{style="font-size: 0.7em; color: #64748b;"}
-:::
-
-::: {.column width="33%"}
-![](image asset/unnamed-chunk-19-1.png){width="100%"}
-
-[By Year]{style="font-size: 0.7em; color: #64748b;"}
-:::
-:::
-
-[**Key Insight:** 2022 shows highest eviction activity — post-pandemic rebound]{style="font-size: 0.85em; color: #64748b;"}
-
-------------------------------------------------------------------------
-
 ## Exploratory Analysis: Spatial Patterns {background-color="#ffffff"}
 
 ::: columns
@@ -261,6 +235,58 @@ theme_light_minimal <- function() {
 :::
 
 [**High evictions in low-rent, low-income areas in North & West Philly**]{style="font-size: 0.85em; color: #64748b;"}
+
+
+------------------------------------------------------------------------
+
+## Model {background-color="#ffffff"}
+
+We have four different regression models in total, with a very complicated process building and analyzing the models. Equation and table below display the logic of our model building process.
+
+<br>
+
+$$\text{Eviction} = \text{Census Characteristics} + \text{Temporal Characteristics} + \text{Spatial Characteristics}$$
+
+<br>
+
+| Characteristic Type | Variables |
+|:--------------------|:----------|
+| Census Characteristics | Income, race, renters characteristics, median rent (monthly), unit characteristics |
+| Temporal Characteristics | Year, season, policy indicators, CPI, Unemployment rate, wages |
+| Spatial Characteristics | Neighborhood effects, EconKDE |
+
+------------------------------------------------------------------------
+
+## Model Performance {background-color="#ffffff"}
+
+::: columns
+::: {.column width="50%"}
+[**10-Fold CV Results**]{style="color: #1d4ed8;"}
+
+| Model | RMSE | R² | MAE |
+|:------|:-----|:---|:----|
+| 1 (Poisson) | 2.354 | 0.324 | 1.613 |
+| 2 (NB) | 2.363 | 0.321 | 1.617 |
+| 3 (+ Econ) | 2.299 | 0.360 | 1.580 |
+| **4 (Full)** | **2.257** | **0.355** | **1.548** |
+
+[Model 4 achieves best RMSE & MAE]{style="color: #be185d; font-weight: bold;"}
+:::
+
+::: {.column width="50%"}
+[**Key Predictors (Model 4)**]{style="color: #1d4ed8;"}
+
+- **% Renter (+0.020)** — more renters = more filings
+- **% Rent burdened (+0.002)** — housing stress
+- **% Black (+0.010)** — systemic disparities
+- **Unemployment lag (+0.058)** — delayed economic effect
+- **Current unemployment (−0.255)** — immediate effect negative
+- **Moratorium (−0.189)** — 17% fewer filings
+- **Post-moratorium (−0.310)** — 27% fewer filings
+- **Log median rent (−0.107)** — wealthier tenants
+- **Economic density (−5,422)** — better job access
+:::
+:::
 
 ------------------------------------------------------------------------
 
@@ -363,9 +389,14 @@ theme_light_minimal <- function() {
 | Medium | Proactive tenant outreach |
 | Low | Monitor & update monthly |
 
+[**User-Facing Tools**]{style="color: #1d4ed8;"}
+
+- Emergency Rental Assistance Application program
+- Coordinate with courts to flag high-risk cases
+
 [**Data Already Available**]{style="color: #1d4ed8;"}
 
-Court filings, Census updates, BLS indicators
+Court filings, Census demographics, BLS indicators
 :::
 
 ::: {.column width="50%"}
@@ -373,14 +404,16 @@ Court filings, Census updates, BLS indicators
 
 - Human review of all allocation decisions
 - Regular audits for disparate impact
-- Transparent methodology
-- Clear governance framework
+- Transparent methodology — residents should know how scores are calculated
+- Clear governance framework for accountability
 
 [**Key Benefits**]{style="color: #1d4ed8;"}
 
 - Early intervention **before** displacement
 - Efficient, targeted resource allocation
 - Data-driven but human-supervised
+
+[**Prevention over reaction**]{style="color: #be185d; font-weight: bold;"}
 :::
 :::
 

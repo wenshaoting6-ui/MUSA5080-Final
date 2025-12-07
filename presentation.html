@@ -268,21 +268,6 @@
 <p><span style="color: #be185d; font-weight: bold;"><strong>Takeaway:</strong> Prevention policies work</span></p>
 </div></div>
 </section>
-<section id="exploratory-analysis-temporal-patterns-1" class="slide level2 center" data-background-color="#ffffff">
-<h2>Exploratory Analysis: Temporal Patterns</h2>
-<div class="columns">
-<div class="column" style="width:33%;">
-<p><img data-src="image%20asset/unnamed-chunk-20-1.png" style="width:100.0%"></p>
-<p><span style="font-size: 0.7em; color: #64748b;">By Month Across Years</span></p>
-</div><div class="column" style="width:33%;">
-<p><img data-src="image%20asset/unnamed-chunk-21-1.png" style="width:100.0%"></p>
-<p><span style="font-size: 0.7em; color: #64748b;">By Quarter</span></p>
-</div><div class="column" style="width:33%;">
-<p><img data-src="image%20asset/unnamed-chunk-19-1.png" style="width:100.0%"></p>
-<p><span style="font-size: 0.7em; color: #64748b;">By Year</span></p>
-</div></div>
-<p><span style="font-size: 0.85em; color: #64748b;"><strong>Key Insight:</strong> 2022 shows highest eviction activity — post-pandemic rebound</span></p>
-</section>
 <section id="exploratory-analysis-spatial-patterns" class="slide level2 center" data-background-color="#ffffff">
 <h2>Exploratory Analysis: Spatial Patterns</h2>
 <div class="columns">
@@ -309,6 +294,96 @@
 <p><span style="font-size: 0.7em; color: #64748b;">vs.&nbsp;Household Income</span></p>
 </div></div>
 <p><span style="font-size: 0.85em; color: #64748b;"><strong>High evictions in low-rent, low-income areas in North &amp; West Philly</strong></span></p>
+</section>
+<section id="model" class="slide level2 center" data-background-color="#ffffff">
+<h2>Model</h2>
+<p>We have four different regression models in total, with a very complicated process building and analyzing the models. Equation and table below display the logic of our model building process.</p>
+<p><br></p>
+<p><span class="math display">\[\text{Eviction} = \text{Census Characteristics} + \text{Temporal Characteristics} + \text{Spatial Characteristics}\]</span></p>
+<p><br></p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 65%">
+<col style="width: 34%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: left;">Characteristic Type</th>
+<th style="text-align: left;">Variables</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">Census Characteristics</td>
+<td style="text-align: left;">Income, race, renters characteristics, median rent (monthly), unit characteristics</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Temporal Characteristics</td>
+<td style="text-align: left;">Year, season, policy indicators, CPI, Unemployment rate, wages</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Spatial Characteristics</td>
+<td style="text-align: left;">Neighborhood effects, EconKDE</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="model-performance" class="slide level2 center" data-background-color="#ffffff">
+<h2>Model Performance</h2>
+<div class="columns">
+<div class="column" style="width:50%;">
+<p><span style="color: #1d4ed8;"><strong>10-Fold CV Results</strong></span></p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th style="text-align: left;">Model</th>
+<th style="text-align: left;">RMSE</th>
+<th style="text-align: left;">R²</th>
+<th style="text-align: left;">MAE</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">1 (Poisson)</td>
+<td style="text-align: left;">2.354</td>
+<td style="text-align: left;">0.324</td>
+<td style="text-align: left;">1.613</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">2 (NB)</td>
+<td style="text-align: left;">2.363</td>
+<td style="text-align: left;">0.321</td>
+<td style="text-align: left;">1.617</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">3 (+ Econ)</td>
+<td style="text-align: left;">2.299</td>
+<td style="text-align: left;">0.360</td>
+<td style="text-align: left;">1.580</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><strong>4 (Full)</strong></td>
+<td style="text-align: left;"><strong>2.257</strong></td>
+<td style="text-align: left;"><strong>0.355</strong></td>
+<td style="text-align: left;"><strong>1.548</strong></td>
+</tr>
+</tbody>
+</table>
+<p><span style="color: #be185d; font-weight: bold;">Model 4 achieves best RMSE &amp; MAE</span></p>
+</div><div class="column" style="width:50%;">
+<p><span style="color: #1d4ed8;"><strong>Key Predictors (Model 4)</strong></span></p>
+<ul>
+<li><strong>% Renter (+0.020)</strong> — more renters = more filings</li>
+<li><strong>% Rent burdened (+0.002)</strong> — housing stress</li>
+<li><strong>% Black (+0.010)</strong> — systemic disparities</li>
+<li><strong>Unemployment lag (+0.058)</strong> — delayed economic effect</li>
+<li><strong>Current unemployment (−0.255)</strong> — immediate effect negative</li>
+<li><strong>Moratorium (−0.189)</strong> — 17% fewer filings</li>
+<li><strong>Post-moratorium (−0.310)</strong> — 27% fewer filings</li>
+<li><strong>Log median rent (−0.107)</strong> — wealthier tenants</li>
+<li><strong>Economic density (−5,422)</strong> — better job access</li>
+</ul>
+</div></div>
 </section>
 <section id="model-performance-error-analysis" class="slide level2 center" data-background-color="#ffffff">
 <h2>Model Performance: Error Analysis</h2>
@@ -409,15 +484,20 @@
 </tr>
 </tbody>
 </table>
+<p><span style="color: #1d4ed8;"><strong>User-Facing Tools</strong></span></p>
+<ul>
+<li>Emergency Rental Assistance Application program</li>
+<li>Coordinate with courts to flag high-risk cases</li>
+</ul>
 <p><span style="color: #1d4ed8;"><strong>Data Already Available</strong></span></p>
-<p>Court filings, Census updates, BLS indicators</p>
+<p>Court filings, Census demographics, BLS indicators</p>
 </div><div class="column" style="width:50%;">
 <p><span style="color: #1d4ed8;"><strong>Required Safeguards</strong></span></p>
 <ul>
 <li>Human review of all allocation decisions</li>
 <li>Regular audits for disparate impact</li>
-<li>Transparent methodology</li>
-<li>Clear governance framework</li>
+<li>Transparent methodology — residents should know how scores are calculated</li>
+<li>Clear governance framework for accountability</li>
 </ul>
 <p><span style="color: #1d4ed8;"><strong>Key Benefits</strong></span></p>
 <ul>
@@ -425,6 +505,7 @@
 <li>Efficient, targeted resource allocation</li>
 <li>Data-driven but human-supervised</li>
 </ul>
+<p><span style="color: #be185d; font-weight: bold;"><strong>Prevention over reaction</strong></span></p>
 </div></div>
 </section>
 <section id="section-1" class="slide level2 center" data-background-color="#ffffff">
