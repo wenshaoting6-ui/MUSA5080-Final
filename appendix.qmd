@@ -8,6 +8,18 @@ format:
     theme: cosmo
 ---
 
+# THE PROBLEM
+
+Eviction is a serious issue; it can lead to housing instability, homelessness, and long-term negative health outcomes. Eviction is a cyclical event that could perpetuate poverty and community disinvestment. The more evictions that happen in a neighborhood, the higher the chance it will continue to experience the same issue.
+
+Some of the main priority groups are low-income renters, households that experience housing burden, and areas with high unemployment rates. The issue our team is trying to look at is the Eviction problem across Philadelphia County at the census tract level. We have collected all the housing eviction data from Eviction Lab Philadelphia tracking.
+
+Our model is trying to look at various predictors that may contribute to the issue of housing eviction and has a tool that would better predict where the next eviction cold spot is. We hope this tool could further inform policymakers to target potential eviction spots in advance and distribute resources to ensure everyone has a safe home to stay.
+
+Some of the tangible actions that we wish to see include emergency rental assistance funds before the actual evictions occur and identifying neighborhoods for proactive tenant outreach programs to prevent eviction from happening in the first place.
+
+### Load Library
+
 ```{r}
 library(tidycensus) 
 library(tidyverse)
@@ -36,6 +48,7 @@ df$first_of_month=floor_date(df$week_date,"month")
 summary(df)
 ```
 
+### Philadelphia shapefile
 
 ```{r}
 census_path <- here("data", "Philly Census")
@@ -45,28 +58,18 @@ census_shp_path <- file.path(census_path, "philly_tract.shp")
 philly_tract_sf <- st_read(census_shp_path, quiet = TRUE)
 ```
 
+ACS Variables Collected:
 
-Variables Collected:
-
-Median gross rent: (B25064)
-
-Race: (B02001)
-
-Median household income: (B19013)
-
-% of Renter: (B25003)
-
-Year Built(renter): (B25036)
-
-Number of Room: (B25017)
-
-Room Per Household: (B25020)
-
-Family Structure: (B11001)
-
-Unemployment in labor force: (C18120)
-
-Gross Rent as a Percentage of Household Income: (B25070)
+-   Median gross rent: (B25064)
+-   Race: (B02001)
+-   Median household income: (B19013)
+-   \% of Renter: (B25003)
+-   Year Built(renter): (B25036)
+-   Number of Room: (B25017)
+-   Room Per Household: (B25020)
+-   Family Structure: (B11001)
+-   Unemployment in labor force: (C18120)
+-   Gross Rent as a Percentage of Household Income: (B25070)
 
 ### census data collected
 
@@ -253,6 +256,7 @@ philly_tract_sf=philly_tract%>%
 
 
 ### Dewey rental data
+
 ```{r}
 #input data
 folder_path <- "data/rental-in-philly"
@@ -302,7 +306,7 @@ phillyrental_proj_1619=phillyrental_proj_1619%>%
 ```
 
 
-### load quartly wage data
+### Load quartly wage data
 ```{r}
 file_list <- list.files(
   path = "data",
@@ -316,7 +320,7 @@ wage_data <- file_list %>%
   select(year,qtr,avg_wkly_wage)
 ```
 
-### merge wage data with evictation data
+### Merge wage data with evictation data
 ```{r}
 df$quarter=quarter(df$week_date)
 df$year=year(df$week_date)
@@ -328,7 +332,7 @@ df=wage_data%>%
   
 ```
 
-### merge with different CPI and unemployment rate per month in Philadelphia
+### Merge with different CPI and unemployment rate per month in Philadelphia
 ```{r}
 food=read.csv(here('data/food.csv'))
 electricity=read.csv(here('data/electricity.csv'))
@@ -377,7 +381,7 @@ df = df %>%
 
 ```
 
-### merge with unemployment data
+### Merge with unemployment data
 ```{r}
 unemployment=read.csv("data/unemployment.csv")
 unemployment$week_date=ym(unemployment$Label)
@@ -387,8 +391,7 @@ df=unemployment%>%
   right_join(df,by="week_date")
 ```
 
-
-### merge with census data 
+### Merge with census data 
 ```{r}
 df_census=df%>%
   left_join(philly_tract_data,by="GEOID")
@@ -398,7 +401,7 @@ df_census_sf=philly_tract_sf%>%
   left_join(df_census,by="GEOID")
 ```
 
-### merge with neighborhood data
+### Merge with neighborhood data
 ```{r}
 neighborhood_folder <- here("data", "philadelphia-neighborhoods")
 neighborhood_path   <- file.path(neighborhood_folder, "philadelphia-neighborhoods.shp")
@@ -439,10 +442,7 @@ df_census_sf_final$MHI_quantile <- cut(
 
 ```
 
-
-
-
-### merge with rent data
+### Merge with rent data
 ```{r}
 #calculate rent by month and tract
 rent_by_month_tract=phillyrental_proj_1923%>%
@@ -454,7 +454,6 @@ rent_by_month_tract=rent_by_month_tract%>%
   group_by(GEOID,date)%>%
     summarise(median_rent=median(RENT_PRICE))
 ```
-
 
 ### Final data frame
 
@@ -470,16 +469,85 @@ df_final=df_census_sf_final%>%
          median_rooms,total_hh,pct_family,median_rent.y,MHI_quantile,week_date,year)
 ```
 
-
-#EXPLORATORY DATA ANALYSIS
+# EXPLORATORY DATA ANALYSIS
 
 ```{r}
 colnames(df_final)
 ```
 
+### Distribution of eviction counts
 
-# Monthly Eviction Filings by Year
 ```{r}
+# aggregate total filings by tract
+tract_totals <- df %>%
+  filter(year(first_of_month) %in% c(2020, 2021, 2022, 2023)) %>%
+  group_by(GEOID) %>%
+  summarise(total_filings = sum(filings_2020, na.rm = TRUE), .groups = "drop")
+
+# create histogram
+ggplot(tract_totals, aes(x = total_filings)) +
+  geom_histogram(binwidth = 20, fill = "darkseagreen3", color = "white") +
+  scale_x_continuous(breaks = seq(0, max(tract_totals$total_filings, na.rm = TRUE), by = 100)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  labs(
+    title = "Distribution of Eviction Filings by Census Tract (2020-2023)",
+    subtitle = "Most tracts have fewer than 200 total filings; a few have extremely high counts",
+    x = "Eviction Filings",
+    y = "Number of Census Tracts",
+    caption = "Source: Eviction Lab"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    panel.grid.minor = element_blank()
+  )
+```
+
+Most of the tracts have fillings less than 200. There are some tracts that has more than 500 fillings.
+
+### Monthly Eviction Filings from 2020-2023
+
+```{r}
+# aggregate total filings by month across all years
+monthly_totals <- df %>%
+  mutate(
+    year = year(first_of_month),
+    month = month(first_of_month)
+  ) %>%
+  filter(year %in% c(2020, 2021, 2022, 2023)) %>%
+  group_by(first_of_month) %>%
+  summarise(total_filings = sum(filings_2020, na.rm = TRUE), .groups = "drop")
+
+# create histogram/bar chart
+ggplot(monthly_totals, aes(x = first_of_month, y = total_filings)) +
+  geom_col(fill = "darkseagreen3", color = "white", width = 25) +
+  scale_x_date(
+    date_breaks = "3 months",
+    date_labels = "%b\n%Y"
+  ) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(
+    title = "Monthly Eviction Filings in Philadelphia (2020-2023)",
+    subtitle = "Note: COVID-19 moratorium caused near-zero filings in April-June 2020",
+    x = NULL,
+    y = "Total Eviction Filings",
+    caption = "Source: Eviction Lab"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    axis.text.x = element_text(size = 8),
+    panel.grid.minor = element_blank()
+  )
+```
+
+This figure displays monthly eviction filings in Philadelphia from January 2020 through late 2023. The COVID-19 eviction caused filings to drop to zero from April-June 2020. By mid-2022, eviction filings surged past pre-pandemic levels, peaking in August 2022 before stabilizing around 2023.
+
+### Monthly Eviction Filings by Year
+
+```{r}
+library(ggpubr)
+
 # Aggregate by year and month
 monthly_by_year <- df %>%
   group_by(year, month) %>%
@@ -520,8 +588,10 @@ annotate_figure(combined,
                 left = text_grob("Total Filings", rot = 90, size = 12))
 ```
 
+This figure shows monthly eviction filings in Philadelphia from 2020 to 2023. The COVID-19 caused filings to drop to near-zero from April to June 2020. Then it followed a recovery period in the late 2020. In 2022 and 2023, eviction filings are at higher levels. Second half of 2021 and 2022 and 2023 all exceed pre-pandemic patterns and showing seasonal peaks in late summer.
 
-# Eviction Filings by Month Across Years
+### Eviction Filings by Month Across Years
+
 ```{r}
 # aggregate by year and month
 monthly_by_year <- df %>%
@@ -562,8 +632,10 @@ annotate_figure(combined,
                 left = text_grob("Total Filings", rot = 90, size = 11))
 ```
 
+There is no apparent monthly pattern across these four years.
 
-# Eviction Map
+### Eviction Map on Census Tract level from 2020-2023
+
 ```{r}
 # aggregate filings by GEOID and year
 evictions_by_tract_year <- df %>%
@@ -607,8 +679,10 @@ annotate_figure(combined_maps,
                                 face = "bold", size = 16))
 ```
 
+Eviction hot spots remain spatially persistent across all four years, concentrated in North Philadelphia, West Philadelphia, and parts of Southwest Philadelphia, while Center City and the Far Northeast consistently show lower filing rates. The overall intensity of evictions increased from 2020 to 2023.
 
-# Local Moran's I
+### Local Moran's I
+
 ```{r}
 # aggregate total filings by tract (across all years or pick one year)
 evictions_by_tract <- df %>%
@@ -665,8 +739,10 @@ ggplot(evictions_sf) +
   )
 ```
 
+The map shows that significant eviction hot spots concentrated in North Philadelphia and some part of West Philadelphia, where high-eviction tracts cluster together. Cold spots appear in South Philadelphia and the Far Northeast, indicating areas where low evictions are surrounded by similarly low eviction rates, while most of the city shows no significant spatial clustering.
 
-# Distance from hot spot
+### Distance from hot spot
+
 ```{r}
 #identify hot spot centroids from LISA analysis above
 hotspot_tracts <- evictions_sf %>%
@@ -703,9 +779,14 @@ ggplot(all_tracts) +
   theme(plot.title = element_text(face = "bold", size = 16))
 ```
 
+The Far Northeast and South Philadelphia are the most distant from high-eviction clusters, while much of North and West Philadelphia lies within close proximity to hot spots, indicating these areas may be at higher risk of eviction spillover effects.
 
-# Eviction vs Unemployment Rate
+### Eviction vs Unemployment Rate
+
 ```{r}
+
+library(cowplot)
+
 # prepare data
 map_data <- df_final %>%
   group_by(GEOID) %>%
@@ -741,8 +822,9 @@ bivariate_colors <- c(
 )
 
 # map
-map1 <- ggplot(map_sf) +
-  geom_sf(aes(fill = bi_class), color = NA) +
+map1 <- ggplot() +
+  geom_sf(data = philly_tract_sf, fill = "grey90", color = "white", lwd = 0.1) +
+  geom_sf(data = map_sf, aes(fill = bi_class), color = "white", lwd = 0.1) +
   scale_fill_manual(values = bivariate_colors, na.value = "grey90", guide = "none") +
   labs(
     title = "Eviction Filings vs Unemployment Rate",
@@ -751,25 +833,32 @@ map1 <- ggplot(map_sf) +
   theme_void() +
   theme(plot.title = element_text(face = "bold", size = 16))
 
+# CREATE LEGEND DATA - this was missing!
+legend_data <- expand.grid(x = 1:3, y = 1:3) %>%
+  mutate(bi_class = paste0(x, "-", y))
+
 legend1 <- ggplot(legend_data, aes(x = x, y = y, fill = bi_class)) +
   geom_tile() +
   scale_fill_manual(values = bivariate_colors, guide = "none") +
-  labs(x = "Unemployment →", y = "Evictions →") +
+  labs(x = "Unemp. →", y = "Evict. →") +
   theme_void() +
   theme(
-    axis.title.x = element_text(size = 8, margin = margin(t = 8)),
-    axis.title.y = element_text(size = 8, angle = 90, margin = margin(r = 8))
+    axis.title.x = element_text(size = 9, margin = margin(t = 5)),
+    axis.title.y = element_text(size = 9, angle = 90, margin = margin(r = 5))
   ) +
   coord_fixed()
 
 final_plot1 <- ggdraw() +
   draw_plot(map1, 0, 0, 1, 1) +
-  draw_plot(legend1, 0.68, 0.02, 0.28, 0.28)
+  draw_plot(legend1, 0.7, 0.05, 0.22, 0.22)
 
 print(final_plot1)
 ```
 
-# Eviction vs Median Gross Rent
+This map shows that high concentration of evictions with high unemployment occurs in North Philadelphia and parts of West Philadelphia. These areas are potentially facing economic hardship. Some South Philadelphia tracts show high unemployment but lower evictions, while the Far Northeast shows low values for both measures, suggesting that unemployment alone does not fully explain eviction patterns.
+
+### Eviction vs Median Gross Rent
+
 ```{r}
 # prepare data
 map_data <- df_final %>%
@@ -837,8 +926,10 @@ final_plot2 <- ggdraw() +
 print(final_plot2)
 ```
 
+This map shows that high eviction areas are predominantly concentrated in lower-rent neighborhoods in North and West Philadelphia. High-rent tracts in Center City, University City, and the Far Northeast tend to have lower eviction rates.
 
-# Evication vs Median Household Income
+### Evication vs Median Household Income
+
 ```{r}
 # prepare data
 map_data <- df_final %>%
@@ -906,8 +997,16 @@ final_plot3 <- ggdraw() +
 print(final_plot3)
 ```
 
+This map shows that most vulnerable tracts—high evictions combined with low household income—concentrated heavily in North Philadelphia, West Philadelphia, and Southwest Philadelphia. Higher-income areas such as Center City, Chestnut Hill, and the Far Northeast consistently show lower eviction rates, demonstrating that evictions disproportionately burden Philadelphia's lowest-income communities where residents have the less financial cushion to absorb economic moves.
 
-# Regression
+# THE EVIDENCE & SOLUATION
+
+**Major Finding:** Eviction filings stayed extremely low before September 2021 because Philadelphia’s local Emergency Housing Protection Act (March–August 2020), PHA’s internal eviction moratorium (March 2020–March 15, 2021), and the federal CDC eviction moratorium (September 2020–August 26, 2021) collectively prevented most cases from being filed. Once the CDC moratorium was struck down in late August 2021, these protections ended for the majority of renters. As a result, eviction filings began to rise again starting in fall 2021 and continued increasing into 2022.
+
+## Regression
+
+### Calculate eviction rate per population and define outlier threshold
+
 ```{r}
 #calculate eviction by population
 df_final$evibypop=df_final$filings_2020/df_final$total_pop*100
@@ -932,6 +1031,8 @@ train_data <- df_filtered[train_indices, ]
 test_data <- df_filtered[-train_indices, ]
 ```
 
+### Model 1: OLS regression of eviction rate on demographic characteristics
+
 ```{r}
 #run regression based on census characteristic
 options(scipen = 999)
@@ -941,15 +1042,19 @@ summary(model1)
 
 ```
 
+### Check multicollinearity using VIF
+
 ```{r}
 vif(model1)
 ```
 
+### Breusch-Pagan test for heteroskedasticity
 
 ```{r}
 bptest(model1)
 ```
 
+### Model 1: Negative binomial regression with population offset and RMSE calculation
 
 ```{r}
 #p-value is way too small, implying more variables may be needed (make sense)
@@ -980,21 +1085,26 @@ print(paste("Test RMSE:", round(rmse_test_1, 2)))
 plot(model1)
 ```
 
-
-
+### Model 2: OLS regression adding economic indicators (rent, CPI, wages)
 
 ```{r}
 model2=lm(filings_2020~median_rent.y+foodcpi+electricitycpi+avg_wkly_wage+median_rent.y+median_hh_income+pct_renter+unemployment_rate+median_year_built_renter+pct_family+pct_black+pct_asian+comcpi+total_pop,data=df_filtered)
 summary(model2)
 ```
 
+### Check multicollinearity for Model 2
+
 ```{r}
 vif(model2)
 ```
 
+### Breusch-Pagan test for heteroskedasticity in Model 2
+
 ```{r}
 bptest(model2)
 ```
+
+### Model 2: Negative binomial regression with economic indicators and RMSE calculation
 
 ```{r}
 #calculate the RMSE
@@ -1022,18 +1132,26 @@ print(paste("Test RMSE:", round(rmse_test_2, 2)))
 plot(model2)
 ```
 
+### Model 3: OLS regression with income quantiles as categorical variable
+
 ```{r}
 model3=lm(filings_2020~median_rent.y+avg_wkly_wage+median_rent.y+median_hh_income+pct_renter+unemployment_rate+median_year_built_renter+pct_family+pct_black+electricitycpi+total_pop+MHI_quantile,data=df_filtered)
 summary(model3)
 ```
 
+### Check multicollinearity for Model 3
+
 ```{r}
 vif(model3)
 ```
 
+### Breusch-Pagan test for heteroskedasticity in Model 3
+
 ```{r}
 bptest(model3)
 ```
+
+### Model 3: Negative binomial regression with year fixed effects, income quantiles, and moratorium indicator
 
 ```{r}
 # 1. Fit the model
@@ -1065,3 +1183,10 @@ print(paste("Test RMSE:", round(rmse_test_3, 2)))
 plot(model3)
 ```
 
+# THE IMPLEMENTATION
+
+One of the primary ways to implement this tool is to develop a Monthly Risk Score based on the prediction. It would be helpful for city agencies to have a map that shows predicted high-risk census tracts and updates the predictions monthly as new data arrives. When a specific tract's risk score exceeds a certain threshold, the city agency should deploy resources to prevent eviction from occurring.
+
+From the user's perspective, it would be beneficial to develop an Emergency Rental Assistance Application program. This program should also coordinate with the courts to flag cases that appear in high-risk areas.
+
+From a data perspective, we already have the eviction filing, census tract demographics, and economic indicators. These existing resources already provide a large foundation for our prediction model and serve as the base for policy implementation. However, it would also be essential to continue having tools like real-time rental listings that track how the rental listing shifts, as long as these other factors are taken into account.
