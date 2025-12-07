@@ -316,7 +316,7 @@ wage_data <- file_list %>%
   set_names() %>% 
   map_df(~ read_csv(.x), .id = "source_file")%>%
   filter(own_title=="Total Covered")%>%
-  select(year,qtr,avg_wkly_wage)
+   dplyr::select(year,qtr,avg_wkly_wage)
 ```
 
 ### Merge wage data with evictation data
@@ -326,7 +326,7 @@ df$year=year(df$week_date)
 df$yearqu=paste0(df$year, df$quarter)
 wage_data$yearqu=paste0(wage_data$year,wage_data$qtr)
 df=wage_data%>%
-  select(yearqu,avg_wkly_wage)%>%
+  dplyr::select(yearqu,avg_wkly_wage)%>%
   right_join(df,by="yearqu")
   
 ```
@@ -345,14 +345,14 @@ electricity$yearm=paste0(electricity$Year,electricity$month)
 
 df=electricity%>%
   mutate(electricitycpi=Value)%>%
-  select(yearm,electricitycpi)%>%
+  dplyr::select(yearm,electricitycpi)%>%
   right_join(df,by="yearm")
 
 #merge with food cpi
 food$first_of_month=ym(food$Label)
 df=food%>%
   mutate(foodcpi=Value)%>%
-  select(first_of_month,foodcpi)%>%
+  dplyr::select(first_of_month,foodcpi)%>%
   right_join(df, by="first_of_month")
 
 df=df%>%
@@ -369,7 +369,7 @@ commodities = commodities %>%
       Period == "S02" ~ ymd(paste(Year, "07", "01"))  # Half 2 -> Jul 1
     )
   ) %>%
-  select(half_year_date, comcpi)
+  dplyr::select(half_year_date, comcpi)
 
 df = df %>%
   left_join(commodities, by = c("first_of_month" = "half_year_date"))
@@ -386,7 +386,7 @@ unemployment=read.csv("data/unemployment.csv")
 unemployment$week_date=ym(unemployment$Label)
 df=unemployment%>%
   mutate(unemployment_rate=Value)%>%
-  select(unemployment_rate,week_date)%>%
+  dplyr::select(unemployment_rate,week_date)%>%
   right_join(df,by="week_date")
 ```
 
@@ -412,8 +412,9 @@ neighborhood_path   <- file.path(neighborhood_folder, "philadelphia-neighborhood
 philly_neighborhoods <- st_read(neighborhood_path, quiet = TRUE)
 
 philly_neighborhoods=st_transform(philly_neighborhoods, crs=32618)
-
 census_points=st_centroid(df_census_sf)
+df_census_sf=st_transform(df_census_sf,crs=32618)
+census_points=st_transform(census_points,crs=32618)
 
 points_joined <- st_join(census_points, philly_neighborhoods)
 df_census_sf=st_join(df_census_sf,philly_neighborhoods)
