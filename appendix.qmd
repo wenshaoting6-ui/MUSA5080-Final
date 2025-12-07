@@ -27,6 +27,7 @@ library(spdep)
 library(ggpubr)
 library(ggplot2)
 library(cowplot)
+library(MASS)
 ```
 ```{r}
 df=read.csv(here("data/philadelphia_monthly_2020_2021.csv"))
@@ -1005,7 +1006,7 @@ bptest(model3)
 ```
 
 ```{r}
-model_train_3 <- lm(filings_2020~median_rent.y+avg_wkly_wage+median_rent.y+median_hh_income+pct_renter+unemployment_rate+median_year_built_renter+pct_family+pct_black+electricitycpi+total_pop+MHI_quantile,data = train_data)
+model_train_3 <- glm.nb(filings_2020~median_rent.y+avg_wkly_wage+median_rent.y+median_hh_income+pct_renter+unemployment_rate+median_year_built_renter+pct_family+pct_black+electricitycpi+I(total_pop)+MHI_quantile,data = train_data)
 test_predictions_3 <- predict(model_train_3, newdata = test_data)
 rmse_test_3 <- sqrt(mean((test_data$filings_2020 - test_predictions_3)^2,na.rm = TRUE))
 rmse_train_3 <- summary(model_train_3)$sigma
