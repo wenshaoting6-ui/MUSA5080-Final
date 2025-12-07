@@ -408,6 +408,8 @@ df=unemployment%>%
 
 ### Merge with census data 
 ```{r}
+philly_tract_data$GEOID=as.character(philly_tract_data$GEOID)
+
 df_census=df%>%
   left_join(philly_tract_data,by="GEOID")
 
